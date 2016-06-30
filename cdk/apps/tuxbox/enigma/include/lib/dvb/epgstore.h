@@ -26,6 +26,7 @@ public:
 	virtual void processEpgRecord( uniqueEPGKey epgKey, int source, __u8 *eitData ) = 0;
 	virtual void cleanup( uniqueKeyVector *vec=0 ) = 0;
 	virtual void flushEPG(const uniqueEPGKey& s=uniqueEPGKey(), const int event_id=0 ) = 0;
+	virtual void save() = 0;
 	virtual timeMapPtr getTimeMapPtr( const eServiceReferenceDVB&, time_t from=0, time_t to=0, int limit=0 ) = 0;
 	virtual void freeTimeMap( timeMap* ) = 0;
 	virtual EITEvent *lookupEvent( const eServiceReferenceDVB &service, int event_id ) = 0;
@@ -60,8 +61,6 @@ class eEPGMemStore : public eEPGStore
 	}
 
 	const eventData *searchByTime( const eServiceReferenceDVB &service, time_t t=0 );
-	void load();
-	void save();
 public:
 	eEPGMemStore();
 	~eEPGMemStore();
@@ -70,6 +69,8 @@ public:
 	void processEpgRecord( uniqueEPGKey epgKey, int source, __u8 *eitData );
 	void cleanup( uniqueKeyVector *vec=0 );
 	void flushEPG( const uniqueEPGKey& s=uniqueEPGKey(), const int event_id=0 );
+	void load();
+	void save();
 	timeMapPtr getTimeMapPtr( const eServiceReferenceDVB&, time_t from=0, time_t to=0, int limit=0 );
 	void freeTimeMap( timeMap* );
 	EITEvent *lookupEvent( const eServiceReferenceDVB &service, int event_id );
@@ -188,6 +189,7 @@ public:
 	void processEpgRecord( uniqueEPGKey epgKey, int source, __u8 *eitData );
 	void cleanup( uniqueKeyVector *vec=0 );
 	void flushEPG( const uniqueEPGKey& s=uniqueEPGKey(), const int event_id=0 );
+	void save(){};
 	timeMapPtr getTimeMapPtr( const eServiceReferenceDVB&, time_t from=0, time_t to=0, int limit=0 );
 	void freeTimeMap( timeMap* );
 	EITEvent *lookupEvent(const eServiceReferenceDVB &service, int event_id );

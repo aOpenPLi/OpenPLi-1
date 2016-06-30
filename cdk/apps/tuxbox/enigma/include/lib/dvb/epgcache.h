@@ -12,6 +12,7 @@
 #include <lib/base/ebase.h>
 #include <lib/base/thread.h>
 #include <lib/base/message.h>
+#include <lib/dvb/dvb.h>
 
 #define HILO(x) (x##_hi << 8 | x##_lo)
 
@@ -265,6 +266,7 @@ private:
 	void abortNonAvail();
 	void flushEPG(const uniqueEPGKey & s=uniqueEPGKey());
 	void startEPG();
+	void save();
 
 	void changedService(const uniqueEPGKey &, int);
 	void abortEPG();
