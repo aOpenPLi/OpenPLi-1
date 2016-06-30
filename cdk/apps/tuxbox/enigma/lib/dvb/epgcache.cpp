@@ -23,8 +23,9 @@ const int ZAP_DELAY = 2000;	        // 2 sek
 
 
 eEPGCache *eEPGCache::instance;
-pthread_mutex_t eEPGCache::cache_lock=
-	PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
+std::map<eString, uniqueEPGKey>	eEPGCache::ServiceMapping;
+
+pthread_mutex_t eEPGCache::cache_lock=PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
 
 
 extern unsigned int crc32_table[256];
@@ -300,6 +301,8 @@ void eEPGCache::init_eEPGCache()
 	CONNECT(abortTimer.timeout, eEPGCache::abortNonAvail);
 	CONNECT(organiseTimer.timeout, eEPGCache::organiseEvent);
 	instance=this;
+	readServiceMappingFile();
+	saveServiceMappingFile();
 	epgStore = eEPGStore::createEPGStore();
 	setOrganiseTimer();
 	epgHours = 4 * 24;
@@ -623,7 +626,7 @@ int eEPGCache::sectionRead(__u8 *data, int source)
 		}
 #endif
 
-		// hier wird immer eine eventMap zurück gegeben.. entweder eine vorhandene..
+		// hier wird immer eine eventMap zurÃ¼ck gegeben.. entweder eine vorhandene..
 		// oder eine durch [] erzeugte
 	
 		while (ptr<len)
@@ -797,6 +800,7 @@ void eEPGCache::flushEPG(const uniqueEPGKey & s)
 
 void eEPGCache::cleanLoop()
 {
+
 	if ( isRunning || (temp.size() && haveData) || !epgStore )
 	{
 		CleanTimer.startLongTimer(5);
@@ -914,6 +918,7 @@ eEPGCache::~eEPGCache()
 	messages.send(Message::quit);
 	kill(); // waiting for thread shutdown
 	delete epgStore;
+	ServiceMapping.clear();
 }
 
 EITEvent *eEPGCache::lookupEvent(const eServiceReferenceDVB &service, int event_id)
@@ -1004,7 +1009,14 @@ void eEPGCache::organise()
 		epgStore->organise();
 }
 
+void eEPGCache::makeTvMap()
+{
+	int storeType;
 
+	if ( eConfig::getInstance()->getKey("/enigma/epgStore", storeType ) ) return;
+	if(storeType != eEPGStore::MEM_STORE || !epgStore)return;
+	epgStore->makeTvMap();
+}
 void eEPGCache::reloadStore()	// Can be used to switch between stores
 {
 	pauseEPG();
@@ -1013,7 +1025,10 @@ void eEPGCache::reloadStore()	// Can be used to switch between stores
 	eEPGStore *tempStore = epgStore;
 	epgStore = 0;
 	delete tempStore;
+
 	serviceLastUpdated.clear();
+	readServiceMappingFile();
+
 	epgStore = eEPGStore::createEPGStore();
 	
 	restartEPG();
@@ -1179,10 +1194,10 @@ void eEPGCache::enterService(const eServiceReferenceDVB& ref, int err)
 
 	if ( thread_running() )
 	// -> gotMessage -> changedService
-		messages.send(Message(Message::enterService, ref, err));
+		messages.send(Message(Message::enterService, getServiceReference(ref), err));
 	else
 	{
-		cached_service = ref;
+		cached_service = getServiceReference(ref);
 		cached_err = err;
 	}
 }
@@ -1297,6 +1312,142 @@ void eEPGCache::abortEPG()
 	}
 }
 
+
+int eEPGCache::readServiceMappingFile()
+{
+	FILE *f = fopen(CONFIGDIR"/enigma/tvmap.dat", "rt");
+	if(!f)return -1;
+	ServiceMapping.clear();
+
+	char *line = (char*) malloc(256);
+	size_t bufsize=256;
+	int count, i;
+	int sid,tsid, onid;
+	while( getline(&line, &bufsize, f) != -1 )
+	{
+		for(i=0;line[i] && line[i]!='#' ;i++);
+		line[i]=0;
+
+		char sec[4][250];
+		const char splitch[]=":=";
+		char *p=strtok(line,splitch);
+		char *search;
+		count=0;
+		do{
+			char *s=sec[count];
+
+			/***********   trim  begin **********/
+			for(search=p; isSpaceChar(*search) ; search++);
+
+			do {
+				*s++ = *search++;
+			}while (*search != '\0');
+
+			search = s;
+			for(search--;isSpaceChar(*search); search--);
+
+			search++;
+			*search='\0' ;
+			/**************  trim end  ************/
+			count++;
+			p=strtok(NULL,splitch);
+		}while(p);
+
+		if(count<4)continue;
+
+		char chname[256];
+		int spacech=0;
+		for(search=sec[3],i=0;search<(sec[3]+strlen(sec[3])) && i<255;search++){
+			if (*search==' ' ||  *search=='\t' || *search=='_'){
+				if(spacech)
+					continue;
+				else{
+					chname[i++]='_';
+					spacech=1;
+				}
+			}
+			else if (!isSpaceChar(*search)){
+				spacech=0;
+				chname[i++]=*search;
+			}
+		}
+		chname[i]='\0';
+
+		if((sscanf(sec[0], "0x%x", &sid) == 1 && sscanf(sec[1], "0x%x", &onid) == 1 && sscanf(sec[2], "0x%x", &tsid) == 1) || (sscanf(sec[0], "%d", &sid) == 1 && sscanf(sec[1], "%d", &onid) == 1 && sscanf(sec[2], "%d", &tsid) == 1))
+		{
+			std::map<eString, uniqueEPGKey>::iterator mIt=ServiceMapping.find(chname);
+			if(mIt==ServiceMapping.end() || (mIt->second.sid + mIt->second.onid )>(sid+onid))
+			      ServiceMapping.insert(std::map<eString, uniqueEPGKey>::value_type(chname,uniqueEPGKey(sid,onid,tsid)));
+		}
+	}
+	free(line);
+	fclose(f);
+	return 0;
+}
+
+int eEPGCache::saveServiceMappingFile()
+{
+	std::map<uniqueEPGKey,eString> MVMap;
+	FILE *f = fopen(CONFIGDIR"/enigma/tvmap.dat", "wt");
+	if(!f)return -1;
+	for(std::map<eString, uniqueEPGKey>::iterator mIt=ServiceMapping.begin();mIt != ServiceMapping.end();++mIt){
+		fprintf(f,"%d:%d:%d=%s\n",mIt->second.sid,mIt->second.onid,mIt->second.tsid,mIt->first.c_str());
+		//create mvmap;
+		std::map<uniqueEPGKey,eString>::iterator mvIt=MVMap.find(mIt->second);
+		if(mvIt==MVMap.end())
+			MVMap.insert(std::map<uniqueEPGKey,eString>::value_type(mIt->second,mIt->first));
+	}
+	fclose(f);
+
+	f = fopen(CONFIGDIR"/enigma/mvmap.dat", "wt");
+	if(f)
+		for(std::map<uniqueEPGKey,eString>::iterator mvIt=MVMap.begin();mvIt != MVMap.end();mvIt++){
+			fprintf(f,"%d:%d:%d=%s\n",mvIt->first.sid,mvIt->first.onid,mvIt->first.tsid,mvIt->second.c_str());
+		}
+	fclose(f);
+
+	MVMap.clear();
+	return 0;
+}
+
+eServiceReferenceDVB eEPGCache::getServiceReference(const eServiceReferenceDVB &service)
+{
+	eTransponderList *tplist=eTransponderList::getInstance();
+	eServiceDVB* servicedvb=tplist->searchService(service);
+	if(!servicedvb) return service;
+      if(ServiceMapping.empty()){
+//            eDebug("getServiceReference:ServiceMapping is empty!");
+            return service;
+      }
+	eString servicename=servicedvb->service_name;
+
+	unsigned int i,j;
+	char chname[251];
+	bool spacech=false;
+	for(i=0,j=0;i<(servicename.length()) && j<250;i++){
+			if (servicename[i]==' ' ||  servicename[i]=='\t' || servicename[i]=='_'){
+				if(spacech)
+					continue;
+				else{
+					chname[j++]='_';
+					spacech=true;
+				}
+			}
+			else if (!isspace(servicename[i])){
+				spacech=false;
+				chname[j++]=servicename[i];
+			}
+	}
+	chname[j]='\0';
+
+	std::map<eString, uniqueEPGKey>::iterator mIt=ServiceMapping.find(chname);
+	if(mIt==ServiceMapping.end()){
+  //          eDebug("getServiceReference:not found service map record!channelname=%s",chname);
+		return service;
+      }
+	return eServiceReferenceDVB(service.getDVBNamespace(),mIt->second.tsid,mIt->second.onid,mIt->second.sid,service.getServiceType());
+}
+
 void eEPGCache::gotMessage( const Message &msg )
 {
 	switch (msg.type)
@@ -1341,6 +1492,9 @@ void eEPGCache::gotMessage( const Message &msg )
 			break;	*/
 		case Message::reloadStore:
 			reloadStore();
+			break;
+		case Message::makeTvMap:
+			makeTvMap();
 			break;
 		case Message::forceEpgScan:
 			forceEpgScan();

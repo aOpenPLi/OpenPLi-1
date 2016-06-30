@@ -158,6 +158,10 @@ public:
 				SCHEDULE_MHW,
 				BEV_EEPG,
 				};
+	static std::map<eString, uniqueEPGKey>	eEPGCache::ServiceMapping;
+	static int readServiceMappingFile();
+	static int saveServiceMappingFile();
+
 #ifdef ENABLE_MHW_EPG
 	friend class eScheduleMhw;
 #endif
@@ -187,6 +191,7 @@ public:
 			content_pid,
 			save,
 			load,
+			makeTvMap,
 			reloadStore,
 			forceEpgScan,
 			organise
@@ -276,6 +281,7 @@ private:
 	void leaveService(const eServiceReferenceDVB &);
 
 	void cleanLoop();
+	void makeTvMap();
 	void pauseEPG();
 	void restartEPG();
 	void reloadStore();
@@ -296,6 +302,7 @@ public:
 	inline void Lock();
 	inline void Unlock();
 
+	eServiceReferenceDVB getServiceReference(const eServiceReferenceDVB &service);
 	tmpMap* getUpdatedMap() { return &temp; }
 	timeMapPtr getTimeMapPtr(const eServiceReferenceDVB &service, time_t from=0, time_t to=0, int limit=0)
 	{
