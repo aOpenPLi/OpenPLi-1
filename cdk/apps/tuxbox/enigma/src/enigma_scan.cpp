@@ -90,7 +90,7 @@ void eZapScan::init_eZapScan()
 	CONNECT((new eListBoxEntryMenu(&list, _("Automatic Transponder Scan"), eString().sprintf("(%d) %s", ++entry, _("open automatic transponder scan"))))->selected, eZapScan::sel_autoScan);
 	if ( eSystemInfo::getInstance()->getFEType() == eSystemInfo::feSatellite ) { // only when a sat box is avail we shows a satellite config
 		CONNECT((new eListBoxEntryMenu(&list, _("Automatic Multisat Scan"), eString().sprintf("(%d) %s", ++entry, _("open automatic multisat transponder scan"))))->selected, eZapScan::sel_multiScan);
-		CONNECT((new eListBoxEntryMenu(&list, _("Fast Scan"), eString().sprintf("(%d) %s", ++entry, _("open fast scan"))))->selected, eZapScan::sel_Fastscan);
+//		CONNECT((new eListBoxEntryMenu(&list, _("Fast Scan"), eString().sprintf("(%d) %s", ++entry, _("open fast scan"))))->selected, eZapScan::sel_Fastscan);
 	}
 
 	CONNECT((new eListBoxEntryMenu(&list, _("Manual Transponder Scan"), eString().sprintf("(%d) %s", ++entry, _("open manual transponder scan"))))->selected, eZapScan::sel_manualScan);
@@ -100,6 +100,8 @@ void eZapScan::init_eZapScan()
 	new eListBoxEntryMenuSeparator(&list, eSkin::getActive()->queryImage("listbox.separator"), 0, true);
 
 	new eListBoxEntryCheck(&list, _("Disable background scanning"), "/elitedvb/extra/disableSDTScan", _("Don't look for new services in the background"));
+
+	new eListBoxEntryCheck(&list, _("Hold Service Name"), "/elitedvb/extra/holdServiceName", _("Hold service's name when scanning"));
 }
 
 void eZapScan::sel_satfind()
