@@ -30,13 +30,15 @@ public:
 		:tag(*((__u8*)descr)), len((__u8)descr->descriptor_length)
 	{
 		len+=2;
+		encode=0;
 	};
 	inline Descriptor(int tag, int len)
 		:tag(tag), len(len + 2) {}
 	inline virtual ~Descriptor(){};
 
-	static Descriptor *create(descr_gen_t *data, int tsidonid = 0, int type = 0);
+	static Descriptor *create(descr_gen_t *data, int tsidonid = 0, int type = 0,int encode=0);
 	int Tag() { return tag; }
+	int encode;
 
 #ifdef SUPPORT_XML	
 	eString toXML();
@@ -58,7 +60,7 @@ class UnknownDescriptor: public Descriptor
 {
 public:
   __u8 *data;
-  UnknownDescriptor(descr_gen_t *descr);
+  UnknownDescriptor(descr_gen_t *descr,int encode=0);
   ~UnknownDescriptor();
   eString toString();
   int length() { return len-2; }
@@ -71,7 +73,7 @@ public:
   int service_type, tsidonid;
   eString service_provider, service_name;
   static const int CTag() { return DESCR_SERVICE; }
-  ServiceDescriptor(sdt_service_desc *descr, int tsidonid);
+  ServiceDescriptor(sdt_service_desc *descr, int tsidonid,int encode=0);
   ~ServiceDescriptor();
   eString toString();
 };
@@ -194,7 +196,7 @@ class NetworkNameDescriptor: public Descriptor
 {
 public:
   eString network_name;
-  NetworkNameDescriptor(descr_gen_t *descr);
+  NetworkNameDescriptor(descr_gen_t *descr,int encode=0);
   ~NetworkNameDescriptor();
   eString toString();
 };
@@ -268,7 +270,7 @@ class ShortEventDescriptor: public Descriptor
 {
 	void init_ShortEventDescriptor(descr_gen_t *descr);
 public:
-	ShortEventDescriptor(descr_gen_t *descr, int tsidonid);
+	ShortEventDescriptor(descr_gen_t *descr, int tsidonid,int encode=0);
 	ShortEventDescriptor(int len, int tsidonid): Descriptor(0x4d, len), tsidonid(tsidonid) { };
 	eString toString();
 	char language_code[3];
@@ -316,13 +318,13 @@ class ExtendedEventDescriptor: public Descriptor
 {
 	void init_ExtendedEventDescriptor(descr_gen_t *descr);
 public:
-	ExtendedEventDescriptor(descr_gen_t *descr, int tsidonid);
+	ExtendedEventDescriptor(descr_gen_t *descr, int tsidonid,int encode=0);
 	eString toString();
 	int descriptor_number;
 	int last_descriptor_number;
 	char language_code[3];
 	ePtrList< ItemEntry > items;
-	eString text;
+	eString text,old_text;
 	int tsidonid;
 };
 
@@ -540,13 +542,22 @@ public:
 	ePtrList< Descriptor > network_descriptor;
 };
 
+
+
+#define srDEFAULT 0
+#define srPLI_EPGDAT 1
+#define srGEMINI_EPGDAT 2
+#define srPLI_SQLITE 3
+#define srOTHER 9
+extern int MemStoreEncode;
 class EITEvent
 {
 	void init_EITEvent(const eit_event_struct *event, int tsidonid);
 public:
-	EITEvent(const eit_event_struct *event, int tsidonid, int type);
+	EITEvent(const eit_event_struct *event, int tsidonid, int type,int source=srDEFAULT);
 	EITEvent();
 	int event_id;
+	int source;
 	time_t start_time;
 	int duration;
 	int running_status;

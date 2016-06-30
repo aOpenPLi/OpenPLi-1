@@ -8,13 +8,26 @@
 #include <map>
 #include "eerror.h"
 
+#define VIDEOTEXSUPPL_ENCODING		0x1E
+#define GB18030_ENCODING		0x13
+#define BIG5_ENCODING			0x14
+#define UTF8_ENCODING			0x15
+#define UNICODE_ENCODING		0x11
+#define UTF16BE_ENCODING		0x16
+#define UTF16LE_ENCODING		0x17
+
 class eString : public std::string
 {
 public:
 	static std::map<eString, int> eString::CountryCodeDefaultMapping;
 	static std::map<int, int> eString::TransponderDefaultMapping; // more priority as country..
 	static std::set<int> eString::TransponderUseTwoCharMapping;
+	static std::map<int, int> eString::ChineseTradAndSimpMapping;
+	static int convertChineseTradToSimp;
+	static int defaultCharsetEncoding;
+
 	static int readEncodingFile();
+	static int readChineseMapFile();
 public:
 // constructors
 	inline eString()	{}	
@@ -33,15 +46,24 @@ public:
 	eString& sprintf(char *fmt, ...);
 	eString& setNum(int val, int sys=10);
 	eString& removeChars(const char fchar);
-	eString& strReplace(const char* fstr, const eString& rstr);
+	eString& strReplace(const char* fstr, const eString& rstr,int encode=0);
 	eString& upper();
 	int icompare(const eString& s);
 };
 
-eString convertDVBUTF8(const unsigned char *data, int len, int table=0, int tsidonid=0); // with default ISO8859-1/Latin1
+
+eString convertDVBUTF8(const unsigned char *data, int len, int table=0, int tsidonid=0,int noEncodeID=0,int *pconvertedLen=0); // with default ISO8859-1/Latin1
 eString convertUTF8DVB(const eString &string, int table=0); // with default ISO8859-1/Latin1
 eString convertLatin1UTF8(const eString &string);
 int isUTF8(const eString &string);
+
+eString Big5ToUTF8(const char *szIn, int len,int *pconvertedLen=0);
+eString GB18030ToUTF8(const char *szIn, int len,int *pconvertedLen=0);
+int UnicodeToUTF8(long c, char *out);
+unsigned long ChineseTradToSimp(long c);
+eString ChineseTradToSimp(const char *szIn,int len);
+
+int isSpaceChar(char ch);
 
 /////////////////////////////////////////////// Copy Constructors ////////////////////////////////////////////////
 inline eString::eString(const std::string &s)

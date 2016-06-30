@@ -1849,7 +1849,7 @@ int eScheduleMhw::sectionRead(__u8 *data)
 		{
 			tnew_summary_read = time(0)+eDVB::getInstance()->time_difference;
 			eString the_text = (char *) (data + 11 + summary->nb_replays * 7);
-			the_text.strReplace( "\r\n", " " );
+			the_text.strReplace( "\r\n", " " ,UTF8_ENCODING);
 			
 			// Find corresponding title, store title and summary in epgcache.
 			std::map<__u32, mhw_title_t>::iterator itTitle( titles.find( itProgid->second ) );

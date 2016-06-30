@@ -126,12 +126,12 @@ static unsigned int crc32_be(unsigned int crc, unsigned char const *data, unsign
 	return crc;
 }
 
-Descriptor *Descriptor::create(descr_gen_t *descr, int tsidonid, int type)
+Descriptor *Descriptor::create(descr_gen_t *descr, int tsidonid, int type,int encode)
 {
 	switch (descr->descriptor_tag)
 	{
 	case DESCR_SERVICE:
-		return new ServiceDescriptor((sdt_service_desc*)descr, tsidonid);
+		return new ServiceDescriptor((sdt_service_desc*)descr, tsidonid,encode);
 	case DESCR_CA_IDENT:
 		return new CAIdentifierDescriptor(descr);
 	case DESCR_LINKAGE:
@@ -155,7 +155,7 @@ Descriptor *Descriptor::create(descr_gen_t *descr, int tsidonid, int type)
 	case DESCR_SAT_DEL_SYS:
 	  return new SatelliteDeliverySystemDescriptor((descr_satellite_delivery_system_struct*)descr);
 	case DESCR_SHORT_EVENT:
-		return new ShortEventDescriptor(descr,tsidonid);
+		return new ShortEventDescriptor(descr,tsidonid,encode);
 	case DESCR_ISO639_LANGUAGE:
 		return new ISO639LanguageDescriptor(descr);
 	case DESCR_AC3:
@@ -163,7 +163,7 @@ Descriptor *Descriptor::create(descr_gen_t *descr, int tsidonid, int type)
 	case DESCR_BOUQUET_NAME:
 		return new BouquetNameDescriptor(descr);
 	case DESCR_EXTENDED_EVENT:
-		return new ExtendedEventDescriptor(descr,tsidonid);
+		return new ExtendedEventDescriptor(descr,tsidonid,encode);
 	case DESCR_COMPONENT:
 		return new ComponentDescriptor((descr_component_struct*)descr, tsidonid);
 	case DESCR_LESRADIOS:
@@ -218,9 +218,10 @@ eString Descriptor::toXML()
 	return "<descriptor><parsed>" + toString() + "</parsed></descriptor>\n";
 }
 
-UnknownDescriptor::UnknownDescriptor(descr_gen_t *descr)
+UnknownDescriptor::UnknownDescriptor(descr_gen_t *descr,int encode)
 	:Descriptor(descr), data(0)
 {
+	this->encode=encode;
 	if ( len > 2 )
 	{
 		data = new __u8[len-2];
@@ -244,19 +245,20 @@ eString UnknownDescriptor::toString()
 }
 #endif
 
-ServiceDescriptor::ServiceDescriptor(sdt_service_desc *descr, int tsidonid)
+ServiceDescriptor::ServiceDescriptor(sdt_service_desc *descr, int tsidonid,int encode)
 	:Descriptor((descr_gen_t*)descr), tsidonid(tsidonid)
 {
+	this->encode=encode;
 	init_ServiceDescriptor(descr);
 }
 void ServiceDescriptor::init_ServiceDescriptor(sdt_service_desc *descr)
 {
 	int spl=descr->service_provider_name_length;
 	service_type=descr->service_type;
-	service_provider=convertDVBUTF8((unsigned char*)(descr+1), spl, 0, tsidonid);
+	service_provider=convertDVBUTF8((unsigned char*)(descr+1), spl, encode, tsidonid);
 	sdt_service_descriptor_2 *descr2=(sdt_service_descriptor_2*)((__u8*)(descr+1)+spl);
 	spl=descr2->service_name_length;
-	service_name=convertDVBUTF8((unsigned char*)(descr2+1), spl, 0, tsidonid);
+	service_name=convertDVBUTF8((unsigned char*)(descr2+1), spl, encode, tsidonid);
 }
 
 ServiceDescriptor::~ServiceDescriptor()
@@ -572,10 +574,11 @@ eString CADescriptor::toString()
 }
 #endif
 
-NetworkNameDescriptor::NetworkNameDescriptor(descr_gen_t *descr)
+NetworkNameDescriptor::NetworkNameDescriptor(descr_gen_t *descr,int encode)
 	:Descriptor(descr)
 {
-	network_name=convertDVBUTF8((unsigned char*)(descr+1), len-2, 0);
+	this->encode=encode;
+	network_name=convertDVBUTF8((unsigned char*)(descr+1), len-2, encode);
 }
 
 NetworkNameDescriptor::~NetworkNameDescriptor()
@@ -819,9 +822,10 @@ eString ServiceListDescriptor::toString()
 }
 #endif
 
-ShortEventDescriptor::ShortEventDescriptor(descr_gen_t *descr, int tsidonid)
+ShortEventDescriptor::ShortEventDescriptor(descr_gen_t *descr, int tsidonid,int encode)
 	:Descriptor(descr), tsidonid(tsidonid)
 {
+	this->encode=encode;
 	init_ShortEventDescriptor(descr);
 }
 void ShortEventDescriptor::init_ShortEventDescriptor(descr_gen_t *descr)
@@ -830,23 +834,29 @@ void ShortEventDescriptor::init_ShortEventDescriptor(descr_gen_t *descr)
 	memcpy(language_code, data+2, 3);
 	int ptr=5;
 	int len=data[ptr++];
+	
+	if(!encode)
+		encode=getEncodingTable(language_code);
 
-	int table=getEncodingTable(language_code);
-
-	event_name.strReplace("\n", " - ");
-	event_name=convertDVBUTF8((unsigned char*)data+ptr, len, table, tsidonid);
+	event_name=convertDVBUTF8((unsigned char*)data+ptr, len, encode, tsidonid);
 	// filter newlines in ARD ShortEventDescriptor event_name
-	event_name.strReplace("\xc2\x8a",": ");
+	event_name.strReplace("\xc2\x8a",": ",UTF8_ENCODING);
+	event_name.strReplace("\n", " - ",UTF8_ENCODING);
+	event_name.strReplace("\r", " ",UTF8_ENCODING);
+//	eDebug("ShortEvent: s=%s event_name=%s",data+ptr,event_name.c_str());
+
 	ptr+=len;
 
 	len=data[ptr++];
-	text=convertDVBUTF8((unsigned char*) data+ptr, len, table, tsidonid);
+	text=convertDVBUTF8((unsigned char*) data+ptr, len, encode, tsidonid);
 
 	unsigned int start = text.find_first_not_of("\x0a");
 	if (start > 0 && start != std::string::npos)
 	{
 		text.erase(0, start);
 	}
+//	eDebug("ShortEvent: s=%s text=%s",data+ptr,text.c_str());
+
 }
 
 #ifdef SUPPORT_XML
@@ -949,9 +959,10 @@ ItemEntry::~ItemEntry()
 {
 }
 
-ExtendedEventDescriptor::ExtendedEventDescriptor(descr_gen_t *descr, int tsidonid)
+ExtendedEventDescriptor::ExtendedEventDescriptor(descr_gen_t *descr, int tsidonid,int encode)
 	:Descriptor(descr), tsidonid(tsidonid)
 {
+	this->encode=encode;
 	init_ExtendedEventDescriptor(descr);
 }
 void ExtendedEventDescriptor::init_ExtendedEventDescriptor(descr_gen_t *descr)
@@ -964,7 +975,9 @@ void ExtendedEventDescriptor::init_ExtendedEventDescriptor(descr_gen_t *descr)
 	language_code[1]=evt->iso_639_2_language_code_2;
 	language_code[2]=evt->iso_639_2_language_code_3;
 
-	int table=getEncodingTable(language_code);
+	int table=encode;
+	if(!table)
+		table=getEncodingTable(language_code);
 
 	int ptr = sizeof(struct eit_extended_descriptor_struct);
 	__u8* data = (__u8*) descr;
@@ -991,8 +1004,11 @@ void ExtendedEventDescriptor::init_ExtendedEventDescriptor(descr_gen_t *descr)
 	}
 
 	int text_length=data[ptr++];
+
 	text=convertDVBUTF8((unsigned char*) data+ptr, text_length, table, tsidonid);
+	old_text=eString((const char*)data+ptr,text_length);
 	ptr+=text_length;
+//	eDebug("ExtendEventDescriptor text=%s",text.c_str());
 }
 
 #ifdef SUPPORT_XML
@@ -1444,51 +1460,51 @@ struct _table Table255[] =
     { 0x0FA7, 0x7B, 0x0C },  // '{' 
     { 0x0FA8, 0x60, 0x0C },  // '`' 
     { 0x0FA9, 0x26, 0x0C },  // '&' 
-    { 0x1F54, 0xFE, 0x0D },  // 'þ' 
-    { 0x1F55, 0xFD, 0x0D },  // 'ý' 
-    { 0x1F56, 0xFC, 0x0D },  // 'ü' 
-    { 0x1F57, 0xFB, 0x0D },  // 'û' 
-    { 0x1F58, 0xFA, 0x0D },  // 'ú' 
-    { 0x1F59, 0xF9, 0x0D },  // 'ù' 
-    { 0x1F5A, 0xF8, 0x0D },  // 'ø' 
-    { 0x1F5B, 0xF7, 0x0D },  // '÷' 
-    { 0x1F5C, 0xF6, 0x0D },  // 'ö' 
-    { 0x1F5D, 0xF5, 0x0D },  // 'õ' 
-    { 0x1F5E, 0xF4, 0x0D },  // 'ô' 
-    { 0x1F5F, 0xF3, 0x0D },  // 'ó' 
-    { 0x1F60, 0xF2, 0x0D },  // 'ò' 
-    { 0x1F61, 0xF1, 0x0D },  // 'ñ' 
-    { 0x1F62, 0xF0, 0x0D },  // 'ð' 
-    { 0x1F63, 0xEF, 0x0D },  // 'ï' 
-    { 0x1F64, 0xEE, 0x0D },  // 'î' 
-    { 0x1F65, 0xED, 0x0D },  // 'í' 
-    { 0x1F66, 0xEC, 0x0D },  // 'ì' 
-    { 0x1F67, 0xEB, 0x0D },  // 'ë' 
-    { 0x1F68, 0xEA, 0x0D },  // 'ê' 
-    { 0x1F69, 0xE9, 0x0D },  // 'é' 
-    { 0x1F6A, 0xE8, 0x0D },  // 'è' 
-    { 0x1F6B, 0xE7, 0x0D },  // 'ç' 
-    { 0x1F6C, 0xE6, 0x0D },  // 'æ' 
-    { 0x1F6D, 0xE5, 0x0D },  // 'å' 
-    { 0x1F6E, 0xE4, 0x0D },  // 'ä' 
-    { 0x1F6F, 0xE3, 0x0D },  // 'ã' 
-    { 0x1F70, 0xE2, 0x0D },  // 'â' 
-    { 0x1F71, 0xE1, 0x0D },  // 'á' 
-    { 0x1F72, 0xE0, 0x0D },  // 'à' 
-    { 0x1F73, 0xDF, 0x0D },  // 'ß' 
-    { 0x1F74, 0xDE, 0x0D },  // 'Þ' 
-    { 0x1F75, 0xDD, 0x0D },  // 'Ý' 
-    { 0x1F76, 0xDC, 0x0D },  // 'Ü' 
-    { 0x1F77, 0xDB, 0x0D },  // 'Û' 
-    { 0x1F78, 0xDA, 0x0D },  // 'Ú' 
-    { 0x1F79, 0xD9, 0x0D },  // 'Ù' 
-    { 0x1F7A, 0xD8, 0x0D },  // 'Ø' 
-    { 0x1F7B, 0xD7, 0x0D },  // '×' 
-    { 0x1F7C, 0xD6, 0x0D },  // 'Ö' 
-    { 0x1F7D, 0xD5, 0x0D },  // 'Õ' 
-    { 0x1F7E, 0xD4, 0x0D },  // 'Ô' 
-    { 0x1F7F, 0xD3, 0x0D },  // 'Ó' 
-    { 0x1F80, 0xD2, 0x0D },  // 'Ò' 
+    { 0x1F54, 0xFE, 0x0D },  // 'Ã¾' 
+    { 0x1F55, 0xFD, 0x0D },  // 'Ã½' 
+    { 0x1F56, 0xFC, 0x0D },  // 'Ã¼' 
+    { 0x1F57, 0xFB, 0x0D },  // 'Ã»' 
+    { 0x1F58, 0xFA, 0x0D },  // 'Ãº' 
+    { 0x1F59, 0xF9, 0x0D },  // 'Ã¹' 
+    { 0x1F5A, 0xF8, 0x0D },  // 'Ã¸' 
+    { 0x1F5B, 0xF7, 0x0D },  // 'Ã·' 
+    { 0x1F5C, 0xF6, 0x0D },  // 'Ã¶' 
+    { 0x1F5D, 0xF5, 0x0D },  // 'Ãµ' 
+    { 0x1F5E, 0xF4, 0x0D },  // 'Ã´' 
+    { 0x1F5F, 0xF3, 0x0D },  // 'Ã³' 
+    { 0x1F60, 0xF2, 0x0D },  // 'Ã²' 
+    { 0x1F61, 0xF1, 0x0D },  // 'Ã±' 
+    { 0x1F62, 0xF0, 0x0D },  // 'Ã°' 
+    { 0x1F63, 0xEF, 0x0D },  // 'Ã¯' 
+    { 0x1F64, 0xEE, 0x0D },  // 'Ã®' 
+    { 0x1F65, 0xED, 0x0D },  // 'Ã­' 
+    { 0x1F66, 0xEC, 0x0D },  // 'Ã¬' 
+    { 0x1F67, 0xEB, 0x0D },  // 'Ã«' 
+    { 0x1F68, 0xEA, 0x0D },  // 'Ãª' 
+    { 0x1F69, 0xE9, 0x0D },  // 'Ã©' 
+    { 0x1F6A, 0xE8, 0x0D },  // 'Ã¨' 
+    { 0x1F6B, 0xE7, 0x0D },  // 'Ã§' 
+    { 0x1F6C, 0xE6, 0x0D },  // 'Ã¦' 
+    { 0x1F6D, 0xE5, 0x0D },  // 'Ã¥' 
+    { 0x1F6E, 0xE4, 0x0D },  // 'Ã¤' 
+    { 0x1F6F, 0xE3, 0x0D },  // 'Ã£' 
+    { 0x1F70, 0xE2, 0x0D },  // 'Ã¢' 
+    { 0x1F71, 0xE1, 0x0D },  // 'Ã¡' 
+    { 0x1F72, 0xE0, 0x0D },  // 'Ã ' 
+    { 0x1F73, 0xDF, 0x0D },  // 'ÃŸ' 
+    { 0x1F74, 0xDE, 0x0D },  // 'Ãž' 
+    { 0x1F75, 0xDD, 0x0D },  // 'Ã' 
+    { 0x1F76, 0xDC, 0x0D },  // 'Ãœ' 
+    { 0x1F77, 0xDB, 0x0D },  // 'Ã›' 
+    { 0x1F78, 0xDA, 0x0D },  // 'Ãš' 
+    { 0x1F79, 0xD9, 0x0D },  // 'Ã™' 
+    { 0x1F7A, 0xD8, 0x0D },  // 'Ã˜' 
+    { 0x1F7B, 0xD7, 0x0D },  // 'Ã—' 
+    { 0x1F7C, 0xD6, 0x0D },  // 'Ã–' 
+    { 0x1F7D, 0xD5, 0x0D },  // 'Ã•' 
+    { 0x1F7E, 0xD4, 0x0D },  // 'Ã”' 
+    { 0x1F7F, 0xD3, 0x0D },  // 'Ã“' 
+    { 0x1F80, 0xD2, 0x0D },  // 'Ã’' 
     { 0x1F81, 0xD1, 0x0D },  // '' 
     { 0x1F82, 0xD0, 0x0D },  // '' 
     { 0x1F83, 0xCF, 0x0D },  // '' 
@@ -2077,8 +2093,9 @@ int NIT::data(__u8* data)
 	return ptr!=len;
 }
 
-EITEvent::EITEvent(const eit_event_struct *event, int tsidonid, int type)
+EITEvent::EITEvent(const eit_event_struct *event, int tsidonid, int type,int source)
 {
+	this->source=source;
 	init_EITEvent(event, tsidonid);
 }
 void EITEvent::init_EITEvent(const eit_event_struct *event, int tsidonid)
@@ -2101,17 +2118,19 @@ void EITEvent::init_EITEvent(const eit_event_struct *event, int tsidonid)
 #ifdef ENABLE_DISH_EPG
 	DishEventNameDescriptor *ndescr = NULL;
 #endif
+	//data is from epg data file
+	if(source)
+		source +=0x0100;
 	while (ptr<len)
 	{
 		descr_gen_t *d=(descr_gen_t*) (((__u8*)(event+1))+ptr);
-		Descriptor *descr = Descriptor::create(d,tsidonid);
+		Descriptor *descr = Descriptor::create(d,tsidonid,0,source);
 		descriptor.push_back(descr);
-// HACK
+// HACK	
 		if ( descr->Tag() == DESCR_SHORT_EVENT )
 		{
 			sdescr = (ShortEventDescriptor*)descr;
 #ifdef ENABLE_DISH_EPG
-			//eDebug("EITEvent: short event, name: %s, description: %s\n", sdescr->event_name.c_str(), sdescr->text.c_str());
 			if (ndescr)
 			{
 				/* we already have a dish event name descriptor, use it's name */
@@ -2124,11 +2143,11 @@ void EITEvent::init_EITEvent(const eit_event_struct *event, int tsidonid)
 		}
 		else if ( descr->Tag() == DESCR_EXTENDED_EVENT && sdescr )
 		{
-			ExtendedEventDescriptor *edescr = (ExtendedEventDescriptor*) descr;
-			unsigned int s1 = sdescr->text.size();
-			unsigned int s2 = edescr->text.size();
-			if ( s2 && !strncmp( sdescr->text.c_str(), edescr->text.c_str(), s2 < s1 ? s2 : s1 ) )
-				sdescr->text.clear();
+		//	ExtendedEventDescriptor *edescr = (ExtendedEventDescriptor*) descr;
+		//	unsigned int s1 = sdescr->text.size();
+		//	unsigned int s2 = edescr->text.size();
+		//	if ( s2 && !strncmp( sdescr->text.c_str(), edescr->text.c_str(), s2 < s1 ? s2 : s1 ) )
+		//		sdescr->text.clear();
 			sdescr = NULL;
 			//eDebug("EITEvent: extended event, text: %s\n", edescr->text.c_str());
 		}
@@ -2147,7 +2166,8 @@ void EITEvent::init_EITEvent(const eit_event_struct *event, int tsidonid)
 			}
 		}
 #endif
-///
+		else if (descr->Tag() < 0x40 && descr->Tag() !=0x13 && descr->Tag() !=0x0A && descr->Tag() != 0x05)
+			break;
 		ptr+=d->descriptor_length+2;
 	}
 }
@@ -2341,3 +2361,4 @@ BAT::BAT()
 	bouquet_descriptors.setAutoDelete(true);
 	entries.setAutoDelete(true);
 }
+

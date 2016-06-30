@@ -2,6 +2,9 @@
 #include <ctype.h>
 #include <limits.h>
 #include <lib/system/elock.h>
+#include <lib/base/gb18030.h>
+#include <lib/base/big5.h>
+#include <lib/system/econfig.h>
 
 ///////////////////////////////////////// eString sprintf /////////////////////////////////////////////////
 eString& eString::sprintf(char *fmt, ...)
@@ -55,36 +58,88 @@ eString& eString::upper()
 			case 'a' ... 'z' :
 				*it -= 32;
 			break;
-
-			case 'ä' :
-				*it = 'Ä';
+/*
+			case '\xe4' : 		//Ã¤
+				*it = '\xc4';	//Ã„
 			break;
 			
-			case 'ü' :
-				*it = 'Ü';
+			case '\xfc' :		//Ã¼
+				*it = '\xdc';	//Ãœ
 			break;
 			
-			case 'ö' :
-				*it = 'Ö';
+			case '\xf6' :		//Ã¶
+				*it = '\xd6';	//Ã–
 			break;
-		}
+*/		}
 
 	return *this;
 }
 
-eString& eString::strReplace(const char* fstr, const eString& rstr)
+eString& eString::strReplace(const char* fstr, const eString& rstr,int encode)
 {
 //	replace all occurrence of fstr with rstr and, and returns a reference to itself
 	unsigned int index=0;
 	unsigned int fstrlen = strlen(fstr);
 	int rstrlen=rstr.size();
 
-	while ( ( index = find(fstr, index) ) != npos )
-	{
-		replace(index, fstrlen, rstr);
-		index+=rstrlen;
+	switch(encode){
+	case UTF8_ENCODING:
+		while(index<length()){
+			if( (fstrlen+index)<=length() && !strcmp(mid(index,fstrlen).c_str(),fstr) ){
+				replace(index,fstrlen,rstr);
+				index+=rstrlen;
+				continue;
+			}
+			if((at(index) & 0xE0)==0xC0)
+				index+=2;
+			else
+			if((at(index) & 0xF0)==0xE0)
+				index+=3;
+			else
+			if((at(index) & 0xF8)==0xF0)
+				index+=4;
+			else
+				index++;
+		}
+		break;
+	case BIG5_ENCODING:
+	case GB18030_ENCODING:
+		while(index<length()){
+			if((fstrlen+index)<=length() && !strcmp(mid(index,fstrlen).c_str(),fstr)){
+				replace(index,fstrlen,rstr);
+				index+=rstrlen;
+				continue;
+			}
+			if((index+1)>=length())break;
+			unsigned char c1=at(index);
+			unsigned char c2=at(index+1);
+			if ( (c1>0x80 && c1<0xff && c2>=0x40 && c2<0xff)	//GBK
+				||(c1>0xa0 && c1<0xf9 && ((c2>=0x40 && c2<0x7f)||(c2>0xa0 && c2<0xff)))	//BIG5
+			)
+				index+=2;
+			else
+				index++;
+		}
+		break;
+	case UNICODE_ENCODING:
+		while(index<length()){
+			if((fstrlen+index)<=length() && !strcmp(mid(index,fstrlen).c_str(),fstr)){
+				replace(index,fstrlen,rstr);
+				index+=rstrlen;
+				continue;
+			}
+			index+=2;
+		}
+		break;
+
+	default:
+		while ( ( index = find(fstr, index) ) != npos )
+		{
+			replace(index, fstrlen, rstr);
+			index+=rstrlen;
+		}
+		break;
 	}
-	
 	return *this;
 }
 
@@ -107,37 +162,148 @@ int eString::icompare(const eString& s)
 std::map<eString, int> eString::CountryCodeDefaultMapping;
 std::map<int, int> eString::TransponderDefaultMapping;
 std::set<int> eString::TransponderUseTwoCharMapping;
+std::map<int, int> eString::ChineseTradAndSimpMapping;
+int eString::convertChineseTradToSimp = 0;
+int eString::defaultCharsetEncoding = 0;
+
+int parseEncoding(char *encoding)
+{
+	int icode=0,flag_assign=0;
+	if (encoding[0] == '='){
+		flag_assign = 1;
+		encoding += 1;
+	}
+	if (strcasecmp(encoding, "VideoTexSuppl") == 0)
+		icode = VIDEOTEXSUPPL_ENCODING;
+	else if (strcasecmp(encoding, "GB2312") == 0 || strcasecmp(encoding, "GBK") == 0 
+		|| strcasecmp(encoding, "GB18030") == 0 || strcasecmp(encoding, "CP936") == 0 )
+		icode = GB18030_ENCODING;
+	else if (strcasecmp(encoding, "BIG5") == 0 || strcasecmp(encoding, "CP950") == 0 )
+		icode = BIG5_ENCODING;
+	else if (strcasecmp(encoding,"UTF8") == 0 || strcasecmp(encoding,"UTF-8") == 0 )
+		icode = UTF8_ENCODING;
+	else if (strcasecmp(encoding, "UTF16BE")==0)
+		icode = UTF16BE_ENCODING;
+	else if (strcasecmp(encoding, "UTF16LE")==0)
+		icode = UTF16LE_ENCODING;
+	else if (strcasecmp(encoding, "UNICODE")==0)
+		icode = UNICODE_ENCODING;
+	else
+	{
+		int enc;
+		if (sscanf(toupper(encoding), "ISO8859-%d", &enc) == 1)
+			icode = enc;
+	}
+	if (flag_assign == 1)
+		icode |= 0x80;
+	return icode;
+}
+
+int eString::readChineseMapFile()
+{
+	FILE *f = fopen(CONFIGDIR "/enigma/chinese.map","rb");
+	if(!f)f = fopen(TUXBOXDATADIR "/enigma/chinese.map","rb");
+	if(!f)return -1;
+	int s=0,t=0;
+	unsigned short lastcode=0;
+	ChineseTradAndSimpMapping.clear();
+	int endian=0;
+	while (!feof(f)){
+		char tmp[20];
+		unsigned short code;
+		if(!endian){
+			if(!fread(tmp,10,1,f))break;
+			if(memcmp(tmp,"\x00\x55\x00\x43\x00\x53\x00\x2D\x00\x32",10)==0)
+				endian=1;	//big endian
+			else if(memcmp(tmp,"\x55\x00\x43\x00\x53\x00\x2D\x00\x32\x00",10)==0)
+				endian=2;	//little endian
+			else break;
+		}
+		if(!fread(tmp,2,1,f))break;
+		if(endian==1)
+			code=tmp[0] << 8 | tmp[1];
+		else
+			code=tmp[1] <<8 | tmp[0];
+		if(code==0x3A || code==0xFF1A)	// acsii char : or chinese :
+			s=lastcode;
+
+		if(lastcode==0x3A || lastcode==0xFF1A ){
+			t=code;
+			ChineseTradAndSimpMapping[t]=s;
+			lastcode=0;
+		}
+		if(code>0x100 || code==0x3A  || code==0xFF1A)
+			lastcode=code;
+	}
+	fclose(f);
+}
+
 
 int eString::readEncodingFile()
 {
 	FILE *f = fopen(CONFIGDIR "/enigma/encoding.conf", "rt");
 	if (f)
 	{
+
 		CountryCodeDefaultMapping.clear();
 		TransponderDefaultMapping.clear();
 		TransponderUseTwoCharMapping.clear();
 		char *line = (char*) malloc(256);
 		size_t bufsize=256;
-		char countrycode[256];
+		int count, i;
+		int tsid, onid, encoding;
+		bool parsed;
 		while( getline(&line, &bufsize, f) != -1 )
 		{
 			if ( line[0] == '#' )
 				continue;
-			int tsid, onid, encoding;
-			if ( sscanf( line, "%s ISO8859-%d", countrycode, &encoding ) == 2 )
-				CountryCodeDefaultMapping[countrycode]=encoding;
-			else if ( (sscanf( line, "0x%x 0x%x ISO8859-%d", &tsid, &onid, &encoding ) == 3 )
-					||(sscanf( line, "%d %d ISO8859-%d", &tsid, &onid, &encoding ) == 3 ) )
-				TransponderDefaultMapping[(tsid<<16)|onid]=encoding;
-			else if ( (sscanf( line, "0x%x 0x%x", &tsid, &onid ) == 2 )
-					||(sscanf( line, "%d %d", &tsid, &onid ) == 2 ) )
-				TransponderUseTwoCharMapping.insert((tsid<<16)|onid);
-			else
+
+			char sec[4][64];
+			count = sscanf(line, "%s%s%s%s", sec[0], sec[1], sec[2],sec[3]);
+			for (i = 0; i < count; i++)
+			{
+				if (sec[i][0] == '#')
+				{
+					count = i;
+					break;
+				}
+			}
+			parsed = false;
+			if (count == 2)
+			{
+				if ( (encoding = parseEncoding(sec[1])) >= 0)
+				{
+					if (sec[0][0] == '*')
+						eString::defaultCharsetEncoding = encoding;					
+					else if (strlen(sec[0]) == 3)
+						CountryCodeDefaultMapping[sec[0]] = encoding;
+					parsed = true;
+				}
+				else
+				{
+					strcpy(sec[2], "VideoTexSuppl");
+					count++;
+				}
+			}
+			if (count == 3 &&
+				((sscanf(sec[0], "0x%x", &tsid) == 1 && sscanf(sec[1], "0x%x", &onid) == 1) ||
+				(sscanf(sec[0], "%d", &tsid) == 1 && sscanf(sec[1], "%d", &onid) == 1)) &&
+				(encoding = parseEncoding(sec[2])) >= 0)
+			{
+				if (encoding == VIDEOTEXSUPPL_ENCODING)
+					TransponderUseTwoCharMapping.insert((tsid<<16)|onid);
+				else{
+					TransponderDefaultMapping[(tsid<<16)|onid]=encoding;
+					}
+				parsed = true;
+			}
+			if (!parsed)
 				eDebug("couldn't parse %s", line);
 		}
 		fclose(f);
 		free(line);
 		return 0;
+
 	}
 	return -1;
 }
@@ -445,25 +611,227 @@ static inline unsigned int recode(unsigned char d, int cp)
 	}
 }
 
-eString convertDVBUTF8(const unsigned char *data, int len, int table, int tsidonid)
+unsigned long ChineseTradToSimp(long c)
 {
-	if (!len)
-		return "";
+	if (eString::convertChineseTradToSimp==0)
+		return c;
+	std::map<int, int>::iterator i=eString::ChineseTradAndSimpMapping.find(c);
+	if(i!=eString::ChineseTradAndSimpMapping.end())
+		return i->second;
+	else
+		return c;
+}
 
+eString ChineseTradToSimp(const char *szIn,int len)
+{
+	if (eString::convertChineseTradToSimp==0)
+		return eString(szIn,len);
+	unsigned long code=0;
+	unsigned char temp[4096];
+	unsigned int j=0;
+	for (int i=0; i < len; ++i)
+	{
+		if (!(szIn[i]&0x80)){ // normal ASCII
+			temp[j++]=szIn[i];
+			continue;
+		}else if ((szIn[i] & 0xE0) == 0xC0) // one char following.
+		{
+				// first, length check:
+			if (i+1 >= len){
+				temp[j++]=szIn[i];
+				break;
+			}else	if ((szIn[i+1]&0xC0) != 0x80){
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i];
+				continue;
+			}
+			code=(szIn[i] & 0x1F)<<6 | (szIn[i+1] & 0x3F);
+			i++;
+		} else if ((szIn[i] & 0xF0) == 0xE0)
+		{
+			if ((i+2) >= len){
+				temp[j++]=szIn[i];
+				break;
+			}else	if ((szIn[i+1]&0xC0) != 0x80 || (szIn[i+2]&0xC0) != 0x80 ){
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i];
+				continue;
+			}
+			code=((szIn[i] & 0x0F)<<12) | ((szIn[i+1] & 0x3F)<<6) | (szIn[i+2] & 0x3F);
+			i+=2;
+		} else if ((szIn[i] & 0xF8) == 0xF0)
+		{
+			if ((i+3) >= len){
+				temp[j++]=szIn[i];
+				break;
+			}else	if ((szIn[i+1]&0xC0) != 0x80 || (szIn[i+2]&0xC0) != 0x80 || (szIn[i+3]&0xC0) != 0x80){
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i];
+				continue;
+			}
+			code=((szIn[i] & 0x07)<<18)|((szIn[i+1] & 0x3F)<<12) | ((szIn[i+2] & 0x3F)<<6) | (szIn[i+3] & 0x3F);
+			i+=3;
+		} else if ((szIn[i] & 0xFC) == 0xF8)
+		{
+			if ((i+4) >= len){
+				temp[j++]=szIn[i];
+				break;
+			}else if ((szIn[i+1]&0xC0) != 0x80 || (szIn[i+2]&0xC0) != 0x80 || (szIn[i+3]&0xC0) != 0x80
+				|| (szIn[i+4]&0xC0) != 0x80){
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i];
+				continue;
+			}
+			code=((szIn[i] & 0x03)<<24)|((szIn[i+1] & 0x3F)<<18)|((szIn[i+2] & 0x3F)<<12) | ((szIn[i+3] & 0x3F)<<6) | (szIn[i+4] & 0x3F);
+			i+=4;
+		} else if ((szIn[i] & 0xFD) == 0xFC)
+		{
+			if ((i+5) >= len){
+				temp[j++]=szIn[i];
+				break;
+			}else if ((szIn[i+1]&0xC0) != 0x80 || (szIn[i+2]&0xC0) != 0x80 || (szIn[i+3]&0xC0) != 0x80
+				|| (szIn[i+4]&0xC0) != 0x80 || (szIn[i+5]&0xC0) != 0x80){
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i++];
+				temp[j++]=szIn[i];
+				continue;
+			}
+			code=((szIn[i] & 0x01)<<30)|((szIn[i+1] & 0x03F)<<24)|((szIn[i+2] & 0x3F)<<18)|((szIn[i+3] & 0x3F)<<12) | ((szIn[i+4] & 0x3F)<<6) | (szIn[i+5] & 0x3F);
+		i+=5;
+		}else{
+			temp[j++]=szIn[i];
+			continue;
+		}
+		code=ChineseTradToSimp(code);
+		int ret=UnicodeToUTF8(code,(char*)temp+j);
+		j+=ret;
+	}
+	temp[j]='\0';
+//	eDebug("[ChineseTradToSimp] %s",temp);
+	return eString((const char *)temp,j);
+}
+
+int UnicodeToUTF8(long c, char *out)
+{
+	char *s = out;
+	int ret = 0;
+
+	if (c < 0x80){
+		*(s++) = c;
+		ret = 1;
+	}else if (c < 0x800)
+	{
+		*(s++) = 0xc0 | (c >> 6);
+		*(s++) = 0x80 | (c & 0x3f);
+		ret = 2;
+	}
+	else if (c < 0x10000)
+	{
+		*(s++) = 0xe0 | (c >> 12);
+		*(s++) = 0x80 | ((c >> 6) & 0x3f);
+		*(s++) = 0x80 | (c & 0x3f);
+		ret = 3;
+	}
+	else if (c < 0x200000)
+	{
+		*(s++) = 0xf0 | (c >> 18);
+		*(s++) = 0x80 | ((c >> 12) & 0x3f);
+		*(s++) = 0x80 | ((c >> 6) & 0x3f);
+		*(s++) = 0x80 | (c & 0x3f);
+		ret = 4;
+	}
+	return ret;
+}
+
+
+eString GB18030ToUTF8(const char *szIn, int len,int *pconvertedLen)
+{
+	char szOut[len * 2];
+	unsigned long code=0;
+	int t=0,i;
+
+	for(i=0;i<len;){
+		int cl=0,k=0;
+
+		cl=gb18030_mbtowc((ucs4_t*)(&code),(const unsigned char *)szIn+i,len-i);
+		if(cl>0)
+			k=UnicodeToUTF8(code,szOut+t);
+		t+=k;
+		if(cl>0)
+			i+=cl;
+		else
+			i++;
+	}
+	szOut[t]='\0';
+
+	if(pconvertedLen)*pconvertedLen=i;
+	return eString(szOut,t);
+}
+
+eString Big5ToUTF8(const char *szIn, int len,int *pconvertedLen)
+{
+	char szOut[len * 2];
+	unsigned long code=0;
+	int t=0,i=0;
+
+	for(;i<(len-1);i++){
+		if((szIn[i]>0xA0) && szIn[i]<=0xF9 &&(
+			((szIn[i+1]>=0x40)&&(szIn[i+1]<=0x7F)) || ((szIn[i+1]>0xA0)&&(szIn[i+1]<0xFF))
+		    )){
+			big5_mbtowc((ucs4_t*)(&code),(const unsigned char *)szIn+i,2);
+			code=ChineseTradToSimp(code);
+			int k=UnicodeToUTF8(code,szOut+t);
+			t+=k;
+			i++;
+		     }
+		else
+			szOut[t++]=szIn[i];
+	}
+
+	if(i<len && szIn[i] && (szIn[i]<0xA0 || szIn[i]>0xF9))
+		szOut[t++]=szIn[i++];
+
+	if(pconvertedLen)*pconvertedLen=i;
+	return eString(szOut,t);
+}
+
+eString convertDVBUTF8(const unsigned char *data, int len, int table, int tsidonid,int noEncodeID,int *pconvertedLen)
+{
 	int i=0, t=0;
+	int encode=table;
+	eString output="";
 
-	if ( tsidonid )
+	if (!len){
+		if(pconvertedLen)*pconvertedLen=0;
+		return "";
+	}
+
+	// table & 0x80 indicate force assign the table.
+	if ( tsidonid && ((table & 0x80) == 0) )
 	{
 		std::map<int, int>::iterator it =
 			eString::TransponderDefaultMapping.find(tsidonid);
 		if ( it != eString::TransponderDefaultMapping.end() )
-			table = it->second;
+			encode = it->second;
 	}
 
-	switch(data[0])
+	bool autoCheckTable=(encode & 0x80)?0:1;
+//	eDebug("ConvertDVBUTF8-1:<data=%s><table=0x%x><tsidonid=%d>\n",data,table,tsidonid);
+	if (autoCheckTable && table != UNICODE_ENCODING && table != UTF16BE_ENCODING && table != UTF16LE_ENCODING )
 	{
+	   switch(data[0])
+	   {
 		case 1 ... 11:
-			table=data[i++]+4;
+			encode=data[i++]+4;
 //			eDebug("(1..12)text encoded in ISO-8859-%d",table);
 			break;
 		case 0x10:
@@ -476,13 +844,13 @@ eString convertDVBUTF8(const unsigned char *data, int len, int table, int tsidon
 				case 12: 
 					eDebug("unsup. ISO8859-12 enc.", n);
 				default:
-					table=n;
+					encode=n;
 					break;
 			}
 			break;
 		}
-		case 0x11://  Basic Multilingual Plane of ISO/IEC 10646-1 enc  (UTF-16... Unicode)
-			table = 65;
+		case 0x11: //  Basic Multilingual Plane of ISO/IEC 10646-1 enc  (UTF-16... Unicode)
+			encode=UNICODE_ENCODING;
 			tsidonid = 0;
 			++i;
 			break;
@@ -492,69 +860,134 @@ eString convertDVBUTF8(const unsigned char *data, int len, int table, int tsidon
 			break;
 		case 0x13:
 			++i;
-			eDebug("unsup. GB-2312-1980 enc.");
+			encode=GB18030_ENCODING;
+//			eDebug("unsup. GB-2312-1980 enc.");
 			break;
 		case 0x14:
 			++i;
-			eDebug("unsup. Big5 subset of ISO/IEC 10646-1 enc.");
+			encode=BIG5_ENCODING;
+//			eDebug("unsup. Big5 subset of ISO/IEC 10646-1 enc.");
 			break;
 		case 0x15: // UTF-8 encoding of ISO/IEC 10646-1
-			return std::string((char*)data+1, len-1);
-		case 0x0:
-		case 0xC ... 0xF:
-		case 0x16 ... 0x1F:
+			++i;
+			encode=UTF8_ENCODING;
+//			return std::string((char*)data+1, len-1);
+			return eString((char*)data+1, len-1);
+			break;
+		case 0x16:
+			encode=UTF16BE_ENCODING;
+			++i;
+			break;
+		case 0x17:
+			encode=UTF16LE_ENCODING;
+			++i;
+			break;
+		case 0:
+		case 0xD ... 0xF:
+		case 0x18 ... 0x1F:
 			eDebug("reserved %d", data[0]);
 			++i;
 			break;
+	  }
 	}
+	else
+		table &= 0x7F;
 
-	unsigned char res[2048];
-	while (i < len)
+	int offset = i;
+	switch(encode)
 	{
-		unsigned long code=0;
+		case GB18030_ENCODING:
+			output = GB18030ToUTF8((const char *)(data + i), len - i,pconvertedLen);
+			if(pconvertedLen)
+				*pconvertedLen += i;
+			break;
+		case BIG5_ENCODING:
+			output = Big5ToUTF8((const char *)(data + i), len - i,pconvertedLen);
+			if(pconvertedLen)
+				*pconvertedLen += i;
+			break;
+		default:
+		    unsigned char res[4096];
+		    while (i < len && (size_t)t < sizeof(res))
+		    {
+			unsigned long code=0;
 
-		if ( i+1 < len && tsidonid &&
-			eString::TransponderUseTwoCharMapping.find(tsidonid) != eString::TransponderUseTwoCharMapping.end() &&
-			(code=doVideoTexSuppl(data[i], data[i+1])) )
-			i+=2;
-		if (!code) {
-			if (table == 65) { // unicode
-				if (i+1 < len) {
-					code=(data[i] << 8) | data[i+1];
-					i += 2;
+			if ( i+1 < len && tsidonid &&
+				eString::TransponderUseTwoCharMapping.find(tsidonid) != eString::TransponderUseTwoCharMapping.end() &&	(code=doVideoTexSuppl(data[i], data[i+1])) )
+				i++;
+			else if(encode==UTF16BE_ENCODING || encode==UNICODE_ENCODING){
+				if((i+2)>len)break;
+				unsigned long w1=((unsigned long)(data[i])<<8) |((unsigned long)(data[i+1]));
+				if(w1<0xD800UL || w1>0xDFFFUL){
+					code=w1;
+					i+=2;
 				}
+				else if(w1>0xDBFFUL)
+					break;
+				else if((i+4)<len){
+					unsigned long w2=((unsigned long)(data[i+2])<<8) |((unsigned long)(data[i+3]));
+					if(w2<0xDC00UL || w2>0xDFFFUL)return eString("");
+					code=0x10000UL + ((w1 & 0x03FFUL)<<10 ) | (w2 & 0x03FFUL);
+					i+=4;
+				}
+				else
+					break;
+			}
+			else if(encode==UTF16LE_ENCODING){
+				if((i+2)>len)break;
+				unsigned long w1=((unsigned long)(data[i+1])<<8) |((unsigned long)(data[i]));
+				if(w1<0xD800UL || w1>0xDFFFUL){
+					code=w1;
+					i+=2;
+				}
+				else if(w1>0xDBFFUL)
+					break;
+				else if((i+4)<len){
+					unsigned long w2=((unsigned long)(data[i+3])<<8) |((unsigned long)(data[i+2]));
+					if(w2<0xDC00UL || w2>0xDFFFUL)break;
+					code=0x10000UL + ((w2 & 0x03FFUL)<<10 ) | (w1 & 0x03FFUL);
+					i+=4;
+				}
+				else
+					break;
+			}
+			else if  (encode==0 || encode==UTF8_ENCODING){ 	// UTF-8 or default
+				res[t++]=data[i++];
+				continue;
 			}
 			else
-				code=recode(data[i++], table);
-		}
-		if (!code)
-			continue;
-				// Unicode->UTF8 encoding
-		if (code < 0x80) // identity ascii <-> utf8 mapping
-			res[t++]=char(code);
-		else if (code < 0x800) // two byte mapping
-		{
-			res[t++]=(code>>6)|0xC0;
-			res[t++]=(code&0x3F)|0x80;
-		} else if (code < 0x10000) // three bytes mapping
-		{
-			res[t++]=(code>>12)|0xE0;
-			res[t++]=((code>>6)&0x3F)|0x80;
-			res[t++]=(code&0x3F)|0x80;
-		} else
-		{
-			res[t++]=(code>>18)|0xF0;
-			res[t++]=((code>>12)&0x3F)|0x80;
-			res[t++]=((code>>6)&0x3F)|0x80;
-			res[t++]=(code&0x3F)|0x80;
-		}
-		if (t+4 > 2047)
-		{
-			eDebug("convertDVBUTF8 buffer to small.. break now");
-			break;
-		}
+				code=recode(data[i++], encode);
+
+			if (!code)
+				continue;
+
+			if (code < 0x80){ // identity ascii <-> utf8 mapping
+				res[t++]=char(code);
+				}
+			else if (code < 0x800 && ( (size_t) t ) + 1 < sizeof(res) ) // two byte mapping
+			{
+				res[t++]=(code>>6)|0xC0;
+				res[t++]=(code&0x3F)|0x80;
+			} else if (code < 0x10000 && ( (size_t) t ) + 2 < sizeof(res) ) // three bytes mapping
+			{
+				res[t++]=(code>>12)|0xE0;
+				res[t++]=((code>>6)&0x3F)|0x80;
+				res[t++]=(code&0x3F)|0x80;
+			} else if (( (size_t) t ) + 3 < sizeof(res))
+			{
+				res[t++]=(code>>18)|0xF0;
+				res[t++]=((code>>12)&0x3F)|0x80;
+				res[t++]=((code>>6)&0x3F)|0x80;
+				res[t++]=(code&0x3F)|0x80;
+			}
+		    }
+		    if(pconvertedLen)*pconvertedLen=i;
+		    output = eString((char*)res, t);
+		    break;
 	}
-	return eString((char*)res, t);
+	if (pconvertedLen && *pconvertedLen < len)
+		eDebug("convertDVBUTF8 converted %d chars and %d not converted!",*pconvertedLen,len - offset - *pconvertedLen);
+	return output;
 }
 
 eString convertUTF8DVB(const eString &string, int table)
@@ -715,5 +1148,11 @@ int isUTF8(const eString &string)
 		}
 	}
 	return 1; // can be UTF8 (or pure ASCII, at least no non-UTF-8 8bit characters)
+}
+
+int isSpaceChar(char ch)
+{
+	unsigned char chin=(unsigned char)ch;
+	return (chin<=' ');
 }
 
