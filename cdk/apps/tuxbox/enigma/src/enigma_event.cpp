@@ -10,6 +10,7 @@
 #include <lib/gui/eskin.h>
 #include <lib/gui/eprogress.h>
 #include <lib/gui/guiactions.h>
+#include <lib/socket/dpopen.h>
 #include <lib/system/init_num.h>
 #include <epgwindow.h>
 #include <enigma_main.h>
@@ -145,7 +146,7 @@ void eEventDisplay::setEPGSearchEvent(eServiceReferenceDVB &Ref, EITEvent *event
 		{
 			valid |= 1;
 			_eventTime.sprintf("%02d:%02d", begin->tm_hour, begin->tm_min);
-			_eventDate=eString().sprintf("%02d.%02d.%4d", begin->tm_mday, begin->tm_mon+1, begin->tm_year+1900);
+			_eventDate=eString().sprintf("%4d.%02d.%02d", begin->tm_year+1900,  begin->tm_mon+1,begin->tm_mday);
 		}
 		time_t endtime=event->start_time+event->duration;
 		tm *end=event->start_time!=-1?localtime(&endtime):0;
@@ -154,9 +155,32 @@ void eEventDisplay::setEPGSearchEvent(eServiceReferenceDVB &Ref, EITEvent *event
 			valid |= 2;
 			_eventTime+=eString().sprintf(" - %02d:%02d", end->tm_hour, end->tm_min);
 		}
-		
+
 		LocalEventData led;
 		led.getLocalData(evt, &_title, &_long_description);
+
+		int formatEvent=0;
+		eConfig::getInstance()->getKey("/ezap/osd/formatEvent",formatEvent);
+
+		if(formatEvent && !access("/var/etc/enigma_format_event.sh",X_OK)){
+		   FILE *fi=dpopen("/var/etc/enigma_format_event.sh descr");
+		   if(fi){
+			fprintf(fi,"%s",_long_description.c_str());
+		        if (dphalfclose(fi) >= 0) {
+				char temp[4096];
+				int len;
+				eString temp_description;
+				temp_description.clear();
+				while(len=fread(temp,sizeof(char),sizeof(temp)-1,fi)){
+					temp[len]='\0';
+					temp_description += temp;
+				}
+				if(temp_description != "")
+					_long_description=temp_description;
+			}
+			dpclose(fi);
+		   }
+		}
 
 		if (_title)
 			valid |= 4;
@@ -229,10 +253,11 @@ void eEventDisplay::init_eEventDisplay(const ePtrList<EITEvent>* e)
 	long_description->setFlags(RS_WRAP);
 
 	// try to recalc long description label... ( no broken text lines.. )
-	float lineheight=fontRenderClass::getInstance()->getLineHeight( long_description->getFont() );
+	int lineheight=(int)fontRenderClass::getInstance()->getLineHeight( long_description->getFont() )*3/2;
+	long_description->setLineHeight(lineheight);
 	int lines = (int)(descr->getSize().height() / lineheight);
 	pageHeight = (int)(lines * lineheight);
-	descr->resize( eSize( descr->getSize().width(), pageHeight+(int)(lineheight/6)));
+	descr->resize( eSize( descr->getSize().width(), pageHeight/*+(int)(lineheight/6)*/));
 	long_description->resize(eSize(descr->getSize().width(), pageHeight*16));
 
 #ifndef DISABLE_FILE
@@ -316,7 +341,7 @@ void eEventDisplay::setEvent(EITEvent *event)
 			{
 				valid |= 1;
 				_eventTime = getTimeStr(begin, 0);
-				_eventDate=eString().sprintf("%02d.%02d.%4d", begin->tm_mday, begin->tm_mon+1, begin->tm_year+1900);
+				_eventDate=eString().sprintf("%4d.%02d.%02d", begin->tm_year+1900, begin->tm_mon+1, begin->tm_mday);
 			}
 			time_t endtime=event->start_time+event->duration;
 			tm *end=event->start_time!=-1?localtime(&endtime):0;
@@ -331,6 +356,29 @@ void eEventDisplay::setEvent(EITEvent *event)
 		LocalEventData led;
 		led.getLocalData(event, &_title, &_long_description);
 
+		int formatEvent=0;
+		eConfig::getInstance()->getKey("/ezap/osd/formatEvent",formatEvent);
+
+		if(formatEvent && !access("/var/etc/enigma_format_event.sh",X_OK)){
+		   FILE *fi=dpopen("/var/etc/enigma_format_event.sh descr");
+		   if(fi){
+			fprintf(fi,"%s",_long_description.c_str());
+		        if (dphalfclose(fi) >= 0) {
+				char temp[4096];
+				int len;
+				eString temp_description;
+				temp_description.clear();
+				while(len=fread(temp,sizeof(char),sizeof(temp)-1,fi)){
+					temp[len]='\0';
+					temp_description += temp;
+				}
+				if(temp_description != "")
+					_long_description=temp_description;
+			}
+			dpclose(fi);
+		   }
+		}
+
 #ifndef DISABLE_LCD
 		if (LCDElement)
 			LCDElement->setText(_long_description);
@@ -338,8 +386,8 @@ void eEventDisplay::setEvent(EITEvent *event)
 
 		if (_title)
 			valid |= 4;
-		else
-			_title = _("no information is available");
+//		else
+//			_title = _("no information is available");
 		if ( !ref.path )
 			channel->setText(service);
 
@@ -348,17 +396,17 @@ void eEventDisplay::setEvent(EITEvent *event)
 
 		setText(_title);
 
-		if (!_long_description)
-			long_description->setText(_("no description is available"));
-		else
+		if (_long_description)
 			long_description->setText(_long_description);
+//		else
+//			long_description->setText(_("no description is available"));
 
 		checkTimerIcon(event);
 	} 
 	else
 	{
 		setText(service);
-		long_description->setText(_("no description is available"));
+//		long_description->setText(_("no description is available"));
 	}
 	updateScrollbar();
 	long_description->show();
