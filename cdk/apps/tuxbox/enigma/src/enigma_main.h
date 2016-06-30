@@ -377,7 +377,7 @@ private:
 		*ButtonGreenEn, *ButtonGreenDis,
 		*ButtonYellowEn, *ButtonYellowDis,
 		*ButtonBlueEn, *ButtonBlueDis,
-		*DolbyOn, *DolbyOff, *CryptOn, *CryptOff, *WideOn, *WideOff, *VtxtOn, *VtxtOff, *AudioOn, *AudioOff, *recstatus, *recchannel,
+		*DolbyOn, *DolbyOff, *CryptOn, *CryptOff, *WideOn, *WideOff, *VtxtOn, *VtxtOff, *AudioOn, *AudioOff,*Online,*Offline, *recstatus, *recchannel,
 		mute, volume,
 		*IrdetoEcm, *SecaEcm, *ViaEcm, *CWEcm, *NagraEcm, *NDSEcm, *ConaxEcm, *BetaEcm, *PowerVuEcm, *DreamCrEcm, *RusCrEcm, *IceCrEcm, *CodiCrEcm,
 		*IrdetoNo, *SecaNo, *ViaNo, *CWNo, *NagraNo, *NDSNo, *ConaxNo, *BetaNo, *PowerVuNo, *DreamCrNo, *RusCrNo, *IceCrNo, *CodiCrNo,
@@ -426,6 +426,7 @@ private:
 
 public:
 	eSize lastvsize;
+	int timeCorrectting;
 
 private:
 	eTimer timeout, clocktimer, messagetimeout,
@@ -484,6 +485,7 @@ private:
 	int isCrypted;
 	int showOSDOnEITUpdate;
 	int serviceFlags;
+	int isOnline;
 	int isSeekable() const { return serviceFlags & eServiceHandler::flagIsSeekable; }
 //#ifndef DISABLE_LCD
 	eZapLCD lcdmain;
@@ -511,6 +513,7 @@ public:
 	void repeatSkip(int dir);
 	void stopSkip(int dir);
 	void endSkip(void);
+	void timeupdate();
 	void skipLoop();
 	enum { skipForward, skipReverse };
 	int isRecording() {return state & stateRecording;}
@@ -585,6 +588,7 @@ private:
 	void doPlaylistAdd(const eServiceReference &service);
 	void addServiceToUserBouquet(eServiceReference *s, int dontask=0);
 public:
+	void clockUpdate();
 	void addServiceToLastScannedUserBouquet (const eServiceReference &service, int service_type, int services_scanned, bool newService);
 	void fillFastscanBouquet(eString bouquetname, std::map<int, eServiceReferenceDVB> &numbered_channels, int originalNumbering, bool radio=false);
 	bool existsBouquet(eString bouquetname, bool radio=false);
@@ -620,7 +624,6 @@ private:
 	void gotPMT();
 	void timeOut();
 	void leaveService();
-	void clockUpdate();
 	void updateVolume(int mute_state, int vol);
 	void prepareDVRHelp();
 	void prepareNonDVRHelp();
@@ -669,6 +672,8 @@ public:
 	void createEmptyBouquet(int mode);
 	void copyProviderToBouquets(eServiceSelector *);
 	void toggleScart( int state );
+	void adjustTime(long timediff=0);
+	void netupdown(int up=-1);
 	void postMessage(const eZapMessage &message, int clear=0);
 	void gotMessage(const int &);
 	void gotEPGMessage(const eEPGCache::Message&);

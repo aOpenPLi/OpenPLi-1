@@ -18,6 +18,7 @@
 #include <lib/dvb/edvb.h>
 #include <lib/dvb/record.h>
 #include <lib/dvb/subtitling.h>
+#include <../src/enigma_main.h>
 #include <sstream>
 #if HAVE_DVB_API_VERSION < 3
 #include <ost/dmx.h>
@@ -494,7 +495,7 @@ void eDVBServiceController::handleEvent(const eDVBEvent &event)
 		if (dvb.getState()==eDVBServiceState::stateServiceGetPMT)
 			dvb.event(eDVBServiceEvent(eDVBServiceEvent::eventServiceSwitched));
 		else
-			eDebug("nee, doch nicht (state ist %d)", (int)dvb.getState());
+			eDebug("no,not yet (state is %d)", (int)dvb.getState());
 		break;
 	}
 	case eDVBServiceEvent::eventServiceGotSDT:
@@ -694,13 +695,27 @@ time_t getRTC()
 void eDVBServiceController::TDTready(int error)
 {
 	eDebug("TDTready %d", error);
-	// receive new TDT every 60 minutes
-	updateTDTTimer.start(60*60*1000,true);
-
+	bool doNothing=false;
 	int usesystemtime = 0;
 	eConfig::getInstance()->getKey("/elitedvb/extra/useSystemTime", usesystemtime);
-	if (usesystemtime) return;
+	int interval=60*60;
+	eConfig::getInstance()->getKey("/elitedvb/extra/TDTInterval", interval);
 
+	if (usesystemtime && access("/tmp/flag/alwaysAllowTDT",F_OK)!=0) doNothing=true;
+	if (usesystemtime &&
+		(eSystemInfo::getInstance()->getHwType() == eSystemInfo::DM7020 ||
+		 eSystemInfo::getInstance()->getHwType() == eSystemInfo::DM7000
+		))doNothing=true;
+
+	updateTDTTimer.start((unsigned long)interval*1000,true);
+
+	if(!access("/tmp/flag/timeAdjustOK",F_OK))timeSet=true;
+	if(eZapMain::getInstance()->timeCorrectting || doNothing || !access("/tmp/flag/timeCorrectting",F_OK))return;
+
+
+	creat("/tmp/flag/timeCorrectting",777);
+	creat("/tmp/flag/TDTupdating",777);
+	eZapMain::getInstance()->timeCorrectting=1;
 	if (!error && transponder)
 	{
 		std::map<tsref, int> &tOffsMap = eTransponderList::getInstance()->TimeOffsetMap;
@@ -722,9 +737,9 @@ void eDVBServiceController::TDTready(int error)
 			// difference between reference time (current enigma time) 
 			// and the transponder time
 			eDebug("[TIME] diff is %d", enigma_diff);
-			if ( abs(enigma_diff) < 120 )
+			if ( abs(enigma_diff) < 60 )
 			{
-				eDebug("[TIME] diff < 120 .. use Transponder Time");
+				eDebug("[TIME] diff < 60 .. use Transponder Time");
 				tOffsMap[*transponder] = 0;
 				new_diff = enigma_diff;
 			}
@@ -747,12 +762,12 @@ void eDVBServiceController::TDTready(int error)
 					new_diff = rtc-nowTime;  // set enigma time to rtc
 					eDebug("[TIME] update stored correction to %d (calced against RTC time)", rtc-tdt->UTC_time );
 				}
-				else if ( abs(ddiff) <= 120 )
+				else if ( abs(ddiff) <= 60 )
 				{
 // with stored correction calced time difference is lower 2 min
 // this don't help when a transponder have a clock running to slow or to fast
 // then its better to have a DM7020 with always running RTC
-					eDebug("[TIME] use stored correction(corr < 2 min)");
+					eDebug("[TIME] use stored correction(corr < 1 min)");
 					new_diff = ddiff;
 				}
 				else  // big change in calced correction.. hold current time and update correction
@@ -785,6 +800,8 @@ void eDVBServiceController::TDTready(int error)
 		if (!new_diff)
 		{
 			eDebug("[TIME] not changed");
+			unlink("/tmp/flag/timeCorrectting");
+			eZapMain::getInstance()->timeCorrectting=0;
 			return;
 		}
 
@@ -862,6 +879,11 @@ void eDVBServiceController::TDTready(int error)
 		else
 			eDebug("[TIME] strange: RTC not ready :(");
 	}
+
+	unlink("/tmp/flag/timeCorrectting");
+	unlink("/tmp/flag/TDTupdating");
+	eZapMain::getInstance()->timeCorrectting=0;
+
 }
 
 void eDVBServiceController::scanPMT( PMT *pmt )

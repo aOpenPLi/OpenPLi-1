@@ -58,6 +58,7 @@
 #include <lib/dvb/dvbservice.h>
 #include <lib/gdi/lcd.h>
 #include <lib/gdi/glcddc.h>
+#include <lib/socket/socket.h>
 #include <lib/system/info.h>
 #include <src/time_correction.h>
 #include <lib/driver/audiodynamic.h>
@@ -1945,6 +1946,23 @@ int eZapMain::doHideInfobar()
 	return 0;
 }
 
+void eZapMain::netupdown(int up)
+{
+	if (up==-1 || up==isOnline)return;
+
+	if(!up){
+		Online->hide();
+		Offline->show();
+		creat("/tmp/flag/offline",744);
+		}
+	else{
+		Online->show();
+		Offline->hide();
+		unlink("/tmp/flag/offline");
+	}
+	isOnline=up;
+}
+
 eZapMain::eZapMain()
 	:eWidget(0, 1)
 	,mute( eZap::getInstance()->getDesktop( eZap::desktopFB ) )
@@ -1956,6 +1974,7 @@ eZapMain::eZapMain()
 	,mmi_messages(eApp, 1)
 //#endif
 	,epg_messages(eApp, 1)
+	,timeCorrectting(0)
 	,timeout(eApp)
 	,clocktimer(eApp), messagetimeout(eApp), progresstimer(eApp)
 	,volumeTimer(eApp), recStatusBlink(eApp), doubleklickTimer(eApp)
@@ -2007,6 +2026,7 @@ void eZapMain::init_main()
 
 
 	isVT=0;
+	isOnline=-1;
 	eSkin *skin=eSkin::getActive();
 	if (skin->build(this, "ezap_main"))
 		eFatal("skin load of \"ezap_main\" failed");
@@ -2282,16 +2302,21 @@ void eZapMain::init_main()
 	ASSIGN(WideOff, eLabel, "osd_format_off");
 	ASSIGN(VtxtOff, eLabel, "osd_txt_off");
 	ASSIGN(AudioOff, eLabel, "osd_audio_off");
+	ASSIGN(Online, eLabel, "osd_online");
+	ASSIGN(Offline, eLabel, "osd_offline");
+
 	DolbyOn->hide();
 	CryptOn->hide();
 	WideOn->hide();
 	VtxtOn->hide();
 	AudioOn->hide();
+	Online->hide();
 	DolbyOff->show();
 	CryptOff->show();
 	WideOff->show();
 	VtxtOff->show();
 	AudioOff->show();
+	Offline->show();
 
 	ButtonRedEn->hide();
 	ButtonRedDis->show();
@@ -6554,6 +6579,39 @@ void eZapMain::showEPGList(eServiceReferenceDVB service)
 		if (wasVisible && !doHideInfobar())
 			showInfobar();
 	}
+}
+
+void eZapMain::adjustTime(long timediff)
+{
+	if (timeCorrectting)return;
+	if(timediff>-10 && timediff<10){
+		timeCorrectting=0;
+		return;
+	}
+
+	timeCorrectting=1;
+	eDVB &dvb=*eDVB::getInstance();
+
+	timeval tnow;
+	gettimeofday(&tnow, 0);
+	tnow.tv_sec=time(0)+timediff;
+	settimeofday(&tnow, 0);
+
+	dvb.time_difference+=timediff;
+
+//	eRCInput::getInstance()->lock();
+	for (ePtrList<eMainloop>::iterator it(eMainloop::existing_loops)
+		;it != eMainloop::existing_loops.end(); ++it)
+		it->setTimerOffset(dvb.time_difference);
+//	eRCInput::getInstance()->unlock();
+	dvb.time_difference= 1;
+	/*emit*/ dvb.timeUpdated();
+
+	//time difference more than 30 minutes then reload memstore epg
+	if(timediff<0 || timediff>30*60)
+		eEPGCache::getInstance()->messages.send(eEPGCache::Message(eEPGCache::Message::reloadStore));
+
+	timeCorrectting=0;
 }
 
 void eZapMain::EPGSearchEvent(eServiceReferenceDVB service)	// EPG search

@@ -190,6 +190,8 @@ void eZap::init_eZap(int argc, char **argv)
 
 	init->setRunlevel(eAutoInitNumbers::osd);
 
+	eDVB::getInstance()->configureNetwork();
+
 	if (eServiceHandlerExternal::getInstance())
 	{
 		std::vector<eZapPlugins::FileExtensionScriptInfo> plugin_list;
@@ -308,8 +310,6 @@ void eZap::init_eZap(int argc, char **argv)
 	free(language);
 
 	eString::readEncodingFile();
-
-	eDVB::getInstance()->configureNetwork();
 
 	// PLi addition
 	// set the Remote Control channel
