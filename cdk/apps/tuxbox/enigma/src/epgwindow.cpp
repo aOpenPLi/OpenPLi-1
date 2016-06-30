@@ -76,7 +76,7 @@ int eListBoxEntryEPG::getEntryHeight()
 		dateXSize = tmp->getBoundBox().width()+5;
 		tmp->destroy();
 	}
-	return calcFontHeight(DescrFont)+4;
+	return calcFontHeight(DescrFont)*3/2;
 }
 
 void eListBoxEntryEPG::build()
@@ -189,7 +189,7 @@ const eString &eListBoxEntryEPG::redraw(gPainter *rc, const eRect& rect, gColor 
 		paraDescr = new eTextPara( eRect( 0 ,0, rect.width()-xpos - 10, rect.height()) );  // -10 is margin of text from right
 		paraDescr->setFont( DescrFont );
 		paraDescr->renderString(descr);
-		DescrYOffs = 0; // ((rect.height() - paraDescr->getBoundBox().height()) / 2 ) - paraDescr->getBoundBox().top();
+		DescrYOffs = ((rect.height() - paraDescr->getBoundBox().height()) / 2 ) - paraDescr->getBoundBox().top();
 		hlp=hlp+' '+descr;
 	}
 	rc->renderPara(*paraDescr, ePoint( xpos, rect.top() + TimeYOffs ) );

@@ -32,26 +32,26 @@ ExecuteOutput::ExecuteOutput(const eString &title, const eString &target)
    unsigned int v_tvsystem;
    
    eConfig::getInstance()->getKey("/elitedvb/video/tvsystem", v_tvsystem);
-   int deltaY = (v_tvsystem == 2) ? -48 : 0;
-	eRCInput::getInstance()->lock();
+
+   eRCInput::getInstance()->lock();
    setText(title);
 
-   cresize(eSize(560, 420 + deltaY));
-   valign();
+   resize(eSize(560, 390));
+   move(ePoint(80,50));
 
    setListboxFont(eSkin::getActive()->queryFont("global.nonprop.small"));
 
    lbx = new eListBox<eListBoxEntryText>(this);
    lbx->move(ePoint(10, 10));
    lbx->loadDeco();
-   lbx->resize(eSize(clientrect.width()-20, 360 + deltaY));
+   lbx->resize(eSize(clientrect.width()-20, clientrect.height()-50));
 
    eButton* bClose = new eButton(this);
    bClose->setText(_("Close"));
    bClose->setShortcut("red");
    bClose->setShortcutPixmap("red");
-   bClose->move(ePoint(10, 370 + deltaY));
-   bClose->resize(eSize(120, 40));
+   bClose->move(ePoint(10, clientrect.height()-45));
+   bClose->resize(eSize(100, 40));
    bClose->loadDeco();
    bClose->hide();
    
@@ -59,8 +59,8 @@ ExecuteOutput::ExecuteOutput(const eString &title, const eString &target)
    bScrollLeft->setText(_("<< Scroll left"));
    bScrollLeft->setShortcut("green");
    bScrollLeft->setShortcutPixmap("green");
-   bScrollLeft->move(ePoint(140, 370 + deltaY));
-   bScrollLeft->resize(eSize(200, 40));
+   bScrollLeft->move(ePoint(140, clientrect.height()-45));
+   bScrollLeft->resize(eSize(180, 40));
    bScrollLeft->loadDeco();
    bScrollLeft->hide();
    
@@ -68,8 +68,8 @@ ExecuteOutput::ExecuteOutput(const eString &title, const eString &target)
    bScrollRight->setText(_("Scroll right >>"));
    bScrollRight->setShortcut("yellow");
    bScrollRight->setShortcutPixmap("yellow");
-   bScrollRight->move(ePoint(350, 370 + deltaY));
-   bScrollRight->resize(eSize(200, 40));
+   bScrollRight->move(ePoint(350, clientrect.height()-45));
+   bScrollRight->resize(eSize(180, 40));
    bScrollRight->loadDeco();
    bScrollRight->hide();
    
@@ -80,7 +80,7 @@ ExecuteOutput::ExecuteOutput(const eString &title, const eString &target)
    eMessageBox mb(title, _("Please wait"), eMessageBox::iconInfo);
    mb.show();
 
-   lineSize = 48;
+   lineSize = 200;
    startChar = 0;
    
    FILE *pipe = popen(target.c_str(), "r");

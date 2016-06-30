@@ -19,7 +19,7 @@
  *
  */
 
-// #define SCREENSHOT_PNG
+//#define SCREENSHOT_PNG
 #include <map>
 #include <time.h>
 #include <fcntl.h>
@@ -94,6 +94,7 @@
 #include <media_mapping.h>
 
 #include <parentallock.h>
+#include <imageresize.h>
 
 using namespace std;
 
@@ -235,9 +236,9 @@ static eString admin(eString request, eString dirpath, eString opts, eHTTPConnec
 	eString command = opt["command"];
 	eString result;
 	if (eSystemInfo::getInstance()->canShutdown())
-		result =  "Unknown admin command. (valid commands are: shutdown, reboot, restart, standby, wakeup)";
+		result =  "Unknown admin command. (valid commands are: shutdown, reboot, restart, standby, wakeup,maketvmap,restartepg,saveepg,adjusttime,netupdown)";
 	else
-		result =  "Unknown admin command. (valid commands are: reboot, restart, standby, wakeup)";
+		result =  "Unknown admin command. (valid commands are: reboot, restart, standby, wakeup,maketvmap,restartepg,saveepg,adjusttime,netupdown)";
 	if (command == "shutdown")
 	{
 		if (eSystemInfo::getInstance()->canShutdown())
@@ -288,7 +289,49 @@ static eString admin(eString request, eString dirpath, eString opts, eHTTPConnec
 			result = "Standby initiated...";
 		}
 	}
-
+	else
+	if (command == "restartepg")
+	{
+		eEPGCache::getInstance()->messages.send(eEPGCache::Message(eEPGCache::Message::reloadStore));
+		result = "EPGCache restarted...";
+	}
+	else
+	if (command == "maketvmap")
+	{
+		eEPGCache::getInstance()->messages.send(eEPGCache::Message(eEPGCache::Message::makeTvMap));
+		result = "tvmap.dat created...";
+	}
+	else
+	if (command == "saveepg")
+	{
+		eEPGCache::getInstance()->messages.send(eEPGCache::Message(eEPGCache::Message::save));
+		result = "EPGCache saveed...";
+	}
+	else
+	if (command == "adjusttime")
+	{
+		long long diff=0;
+		eString arg=opt["value"];
+		if(!strcasecmp(arg.c_str(),"startTDT")){
+			eDVBServiceController *sapi = eDVB::getInstance()->getServiceAPI();
+			if ( sapi )
+				sapi->startTDT();
+		}
+		else{
+			if(sscanf(arg.c_str(),"%Ld",&diff))
+				eZapMain::getInstance()->adjustTime(diff);
+		}
+		eDebug("adjusttime:input=%s timediff=%Ld",opt["value"].c_str(),diff);
+		result="time adjusted...";
+	}
+	else
+	if (command == "netupdown")
+	{
+		eString sonline= opt["up"];
+		int online=(sonline=="1" || !strcasecmp(sonline.c_str(),"true") || !strcasecmp(sonline.c_str(),"yes") )?1:0;
+		eZapMain::getInstance()->netupdown(online);
+		result = "network status updated...";
+	}
 	return "<html>" + eString(CHARSETMETA) + "<head><title>" + command + "</title></head><body>" + result + "</body></html>";
 }
 
@@ -1059,7 +1102,7 @@ public:
 			const eventData* evt( epgData->channelEpg( ref ) );
 			if (evt)
 			{
-				EITEvent event(evt->get(),tsidonid, evt->type);
+				EITEvent event(evt->get(),tsidonid, evt->type,evt->source);
 				LocalEventData led;
 				led.getLocalData(&event, &short_description);
 				tm t = *localtime(&event.start_time);
@@ -1685,7 +1728,7 @@ int genScreenShot(int index, int blendtype)
 		eDebug("genScreenShot: could not open /dev/video");
 		return 1;
 	}
-
+#ifndef SCREENSHOT_PNG
 	eString filename = "/tmp/screenshot" + ((index > 0) ? eString().sprintf("%d", index) : "") + ".bmp";
 	FILE *fd2 = fopen(filename.c_str(), "wr");
 	if (fd2 < 0)
@@ -1695,7 +1738,7 @@ int genScreenShot(int index, int blendtype)
 	}
 
 	int genhdr = 1;
-
+#endif
 	int r = read(fd, frame, 720 * 576 * 3 + 16);
 	if (r < 16)
 	{
@@ -1725,6 +1768,13 @@ int genScreenShot(int index, int blendtype)
 
 	eDebug("genScreenShot: Chroma subsampling: %s", d);
 
+	// prepare for OSD pixmap
+	gPixmap *pixmap = 0;
+	pixmap = &gFBDC::getInstance()->getPixmap();
+	int galpha = gFBDC::getInstance()->getAlpha();
+	eDebug("genScreenShot: Have pixmap %s, alpha=%d blendtype=%d", pixmap ? "yes" : "no", galpha, blendtype);
+
+#ifndef SCREENSHOT_PNG
 	if (genhdr)
 	{
 		eDebug("genScreenShot: generating bitmap header.");
@@ -1734,9 +1784,9 @@ int genScreenShot(int index, int blendtype)
 #define PUT16(x) hdr[i++] = ((x)&0xFF); hdr[i++] = (((x)>>8)&0xFF);
 #define PUT8(x) hdr[i++] = ((x)&0xFF);
 		PUT8('B'); PUT8('M');
-		PUT32((((luma_x * luma_y) * 3 + 3) &~ 3) + 14 + 40);
+		PUT32((((pixmap->x * pixmap->y) * 3 + 3) &~ 3) + 14 + 40);
 		PUT16(0); PUT16(0); PUT32(14 + 40);
-		PUT32(40); PUT32(luma_x); PUT32(luma_y);
+		PUT32(40); PUT32(pixmap->x); PUT32(pixmap->y);
 		PUT16(1);
 		PUT16(24);
 		PUT32(0); PUT32(0); PUT32(0); PUT32(0); PUT32(0); PUT32(0);
@@ -1745,37 +1795,54 @@ int genScreenShot(int index, int blendtype)
 #undef PUT8
 		fwrite(hdr, 1, i, fd2);
 	}
-
+#endif
 	int x, y;
 
-	// prepare for OSD pixmap
-	gPixmap *pixmap = 0;
-	pixmap = &gFBDC::getInstance()->getPixmap();
-	int galpha = gFBDC::getInstance()->getAlpha();
-	eDebug("genScreenShot: Have pixmap %s, alpha=%d blendtype=%d", pixmap ? "yes" : "no", galpha, blendtype);
+
+	TPicRegion sRegion,dRegion;
+	sRegion.pdata=(TARGB32*)((unsigned char *)malloc(luma_x * luma_y*4));
+	dRegion.pdata=(TARGB32*)((unsigned char *)malloc(pixmap->x * pixmap->y * 4));
+
+	if(!sRegion.pdata)
+	{
+		eDebug("genScreenShot: cannot allocate memory for screenpix resize source!");
+		return 1;
+	}
+	if(!dRegion.pdata)
+	{
+		eDebug("genScreenShot: cannot allocate memory for screenpix resized target!");
+		return 1;
+	}
+
+	sRegion.byte_width=luma_x * 4;
+	sRegion.width=luma_x;
+	sRegion.height=luma_y;
+
+	dRegion.byte_width=pixmap->x * 4;
+	dRegion.width=pixmap->x;
+	dRegion.height=pixmap->y;
+
 
 #if defined(SCREENSHOT_PNG)
 	gPixmap result;
-	}
 	result.bpp = 32;
 	result.bypp = 4;
-	result.stride = luma_x*4;
-	result.x = luma_x;
-	result.y = luma_y;
-	result.data = malloc(luma_y * luma_x * 4);
+	result.stride = pixmap->x*4;
+	result.x = pixmap->x;
+	result.y = pixmap->y;
+//	result.data=(__u8 *)dRegion.pdata;
+	result.data = malloc(pixmap->x * pixmap->y * 4);
 	if (!result.data)
 	{
 		eDebug("genScreenShot: cannot allocate memory for screenpixmap");
 		return 1;
+	}
 	eDebug("genScreenShot: allocated pixmap");
 #endif
 
+	eDebug("genScreenshot:begin convert YUV to RGB");
 	for (y = luma_y - 1; y >= 0; --y)
 	{
-		unsigned char line[luma_x * 3];
-#if defined(SCREENSHOT_PNG)
-		__u8 * resline = ((__u8 *)result.data) + y * result.stride;
-#endif
 		for (x = 0; x < luma_x; ++x)
 		{
 			int l = luma[y * luma_x + x];
@@ -1840,22 +1907,50 @@ int genScreenShot(int index, int blendtype)
 			g = -25690 * cb - 53294 * cr + l * 76310;
 			b = 132278 * cb + l * 76310;
 
-			line[x * 3 + 2] = CLAMP(r >> 16);
-			line[x * 3 + 1] = CLAMP(g >> 16);
-			line[x * 3 + 0] = CLAMP(b >> 16);
-#if defined(SCREENSHOT_PNG)
-			resline[x * 4 + 0] = 255;
-			resline[x * 4 + 1] = CLAMP(r >> 16);
-			resline[x * 4 + 2] = CLAMP(g >> 16);
-			resline[x * 4 + 3] = CLAMP(b >> 16);
-#endif
+			TARGB32 * pColor=(TARGB32 *)((__u8 *)sRegion.pdata+y*sRegion.byte_width + x*4);
+			pColor->a = 255;
+			pColor->r = CLAMP(r >> 16);
+			pColor->g = CLAMP(g >> 16);
+			pColor->b = CLAMP(b >> 16);
 		}
+	}
 
-		if (blendtype && pixmap && y <= pixmap->y)
+	int screenshotResizeMethod=0;
+	eConfig::getInstance()->getKey("i:/ezap/extra/screenshotResizeMethod",screenshotResizeMethod);
+	if (screenshotResizeMethod==1)
+		PicZoom_Bilinear_Common((const TPicRegion&)dRegion,(const TPicRegion&)sRegion);
+	else if (screenshotResizeMethod==2)
+		PicZoom_ThreeOrder_Common((const TPicRegion&)dRegion,(const TPicRegion&)sRegion);
+	else
+		PicZoom3((const TPicRegion&)dRegion,(const TPicRegion&)sRegion);
+
+	free((__u8*)sRegion.pdata);
+
+	for(y=pixmap->y-1;y>=0;--y)
+	{
+#ifndef SCREENSHOT_PNG
+		unsigned char line[pixmap->x * 3];
+#else
+		__u8 * resline = (__u8 *)result.data  + y * result.stride;
+#endif
+		for(x=pixmap->x-1 ; x >= 0; --x){
+			TARGB32 * pColor=(TARGB32 *)((__u8 *)dRegion.pdata+y*dRegion.byte_width + x*4);
+#ifndef SCREENSHOT_PNG
+			line[x*3+ 2]=pColor->r;
+			line[x*3+ 1]=pColor->g;
+			line[x*3+ 0]=pColor->b;
+#else
+			resline[x*4+ 0]=pColor->a;
+			resline[x*4+ 1]=pColor->r;
+			resline[x*4+ 2]=pColor->g;
+			resline[x*4+ 3]=pColor->b;
+#endif
+			}
+		if (blendtype && pixmap)
 		{
 			__u8 * prow = ((__u8 *)pixmap->data) + y*pixmap->stride;
 			
-			for (int px = 0; px < luma_x && px < pixmap->x; px++)
+			for (int px = 0;  px < pixmap->x; px++)
 			{
 				if (pixmap->bpp == 8) {
 					int osdbyte = prow[px];
@@ -1879,10 +1974,11 @@ int genScreenShot(int index, int blendtype)
         					int pr = pixmap->clut.data[osdbyte].r;
         					int pg = pixmap->clut.data[osdbyte].g;
         					int pb = pixmap->clut.data[osdbyte].b;
-						line[px*3 + 2] = (line[px*3 + 2] * alpha + pr * (255-alpha)) >> 8; 
-						line[px*3 + 1] = (line[px*3 + 1] * alpha + pg * (255-alpha)) >> 8; 
-						line[px*3 + 0] = (line[px*3 + 0] * alpha + pb * (255-alpha)) >> 8; 
-#if defined(SCREENSHOT_PNG)
+#ifndef SCREENSHOT_PNG
+						line[px*3 + 2] = (line[px*3 + 2]  * alpha + pr * (255-alpha)) >> 8; 
+						line[px*3 + 1] = (line[px*3 + 1]  * alpha + pg * (255-alpha)) >> 8; 
+						line[px*3 + 0] = (line[px*3 + 0]  * alpha + pb * (255-alpha)) >> 8; 
+#else
 						resline[px*4 + 1] = (resline[px*4 + 1] * alpha + pr * (255-alpha)) >> 8; 
 						resline[px*4 + 2] = (resline[px*4 + 2] * alpha + pg * (255-alpha)) >> 8; 
 						resline[px*4 + 3] = (resline[px*4 + 3] * alpha + pb * (255-alpha)) >> 8; 
@@ -1908,10 +2004,12 @@ int genScreenShot(int index, int blendtype)
 								alpha <<= 1; // OSD more opaque
 								break;
 						}
+#ifndef SCREENSHOT_PNG
 						line[px*3 + 2] = (line[px*3 + 2] * (255 - alpha) + ((osdbyte >> 16) & 0xFF) * alpha) >> 8; 
 						line[px*3 + 1] = (line[px*3 + 1] * (255 - alpha) + ((osdbyte >> 8) & 0xFF) * alpha) >> 8; 
 						line[px*3 + 0] = (line[px*3 + 0] * (255 - alpha) + (osdbyte & 0xFF) * alpha) >> 8; 
-#if defined(SCREENSHOT_PNG)
+
+#else
 						resline[px*4 + 1] = (resline[px*4 + 1] * (255 - alpha) + ((osdbyte >> 16) & 0xFF) * alpha) >> 8; 
 						resline[px*4 + 2] = (resline[px*4 + 2] * (255 - alpha) + ((osdbyte >> 8) & 0xFF) * alpha) >> 8; 
 						resline[px*4 + 3] = (resline[px*4 + 3] * (255 - alpha) + (osdbyte & 0xFF) * alpha) >> 8; 
@@ -1920,16 +2018,20 @@ int genScreenShot(int index, int blendtype)
         			}
 			}
 		}
-
-		fwrite(line, 1, luma_x * 3, fd2);
-	}
-	fclose(fd2);
-#if defined(SCREENSHOT_PNG)
-	filename = "/tmp/screenshot" + ((index > 0) ? eString().sprintf("%d", index) : "") + ".png";
-	savePNG(filename.c_str(), &result);
-	free(result.data);
-	eDebug("genScreenShot: done");
+#ifndef SCREENSHOT_PNG
+		fwrite(line, 1, pixmap->x * 3, fd2);
 #endif
+	}
+#ifndef SCREENSHOT_PNG
+	fclose(fd2);
+#else
+	eString filename = "/tmp/screenshot" + ((index > 0) ? eString().sprintf("%d", index) : "") + ".png";
+	savePNG(filename.c_str(), &result);
+	if(result.data)
+		free(result.data);
+#endif
+	free((__u8*)dRegion.pdata);
+	eDebug("genScreenShot: done");
 	return 0;
 }
 
@@ -1944,7 +2046,11 @@ static eString getControlScreenShot(eString opts)
 	eDebug("getControlScreenshot: rc is %d", rc);
 	if (rc != 0)
 	{
+#ifndef SCREENSHOT_PNG
 		eDebug("could not generate /tmp/screenshot.bmp");
+#else
+		eDebug("could not generate /tmp/screenshot.png");
+#endif
 	}
 	else
 	{
@@ -1982,8 +2088,8 @@ static eString getControlScreenShot(eString opts)
 			}
 		}
 
-		winxres = (pdaScreen == 1) ? 160 : xres;
-		if(blendType != 0)
+		winxres = (pdaScreen == 1) ? 160 : 720;
+/*		if(blendType != 0)
 		{
 			// Something to blend, use size of OSD
 			winyres = yres * winxres / xres;
@@ -1993,12 +2099,20 @@ static eString getControlScreenShot(eString opts)
 			// Nothing to blend, use an optimal aspect ratio
 			winyres = rv * winxres / rh;
 		}
+*/
+
+		winyres = (pdaScreen ==1) ? (rv * winxres/rh) : 576;
 
 		eDebug("[SCREENSHOT] xres = %d, yres = %d, rh = %d, rv = %d, winxres = %d, winyres = %d\n", xres, yres, rh, rv, winxres, winyres);
 
-		result += "<img width=\"" +  eString().sprintf("%d", winxres);
+		result += "<img ";
+		result += " width=\"" +  eString().sprintf("%d", winxres);
 		result += "\" height=\"" + eString().sprintf("%d", winyres);
+#ifndef SCREENSHOT_PNG
 		result += "\" src=\"/root/tmp/screenshot.bmp\" border=1>";
+#else
+		result += "\" src=\"/root/tmp/screenshot.png\" border=1>";
+#endif
 		result += "<br>";
 		result += "Original format: " + eString().sprintf("%d", xres) + "x" + eString().sprintf("%d", yres);
 		result += " (" + eString().sprintf("%d", rh) + ":" + eString().sprintf("%d", rv) + ")";

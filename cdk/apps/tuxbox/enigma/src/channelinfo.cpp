@@ -7,18 +7,20 @@
 #include <lib/dvb/epgcache.h>
 #include <lib/dvb/dvbservice.h>
 #include <lib/dvb/frontend.h>
+#include <lib/socket/dpopen.h>
 #include <lib/system/info.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <epgwindow.h>
 #include <enigma_main.h>
 #include <sselect.h>
+#include <lib/driver/rc.h>
 
 eChannelInfo::eChannelInfo( eWidget* parent, const char *deco)
 	:eDecoWidget(parent, 0, deco),
 	ctime(this), cname(this), copos(this), cdescr(this),
 	cdolby(this), cstereo(this),
-	cformat(this), cscrambled(this), eit(0)
+	cformat(this), cscrambled(this),cntime(this), eit(0)
 {
 	init_eChannelInfo();
 }
@@ -27,8 +29,16 @@ void eChannelInfo::init_eChannelInfo()
 	foregroundColor=eSkin::getActive()->queryColor("eStatusBar.foreground");
 	backgroundColor=eSkin::getActive()->queryColor("eStatusBar.background");
 	gFont fn = eSkin::getActive()->queryFont("eChannelInfo");
+	lineheight=(int)fontRenderClass::getInstance()->getLineHeight(fn )+4;
+
+	int percentprogress=0;
+	eConfig::getInstance()->getKey("/ezap/osd/PercentProgress", percentprogress);
+	setDisplayMode(percentprogress);
+
+	perc=-1;
 
 	cdescr.setFont( fn );
+	cdescr.setLineHeight(lineheight);
 	cdescr.setForegroundColor( foregroundColor );
 	cdescr.setBackgroundColor( backgroundColor );
 	cdescr.setFlags(RS_WRAP);
@@ -41,14 +51,22 @@ void eChannelInfo::init_eChannelInfo()
 	copos.setFlags( RS_FADE );
 
 	cname.setFont( fn );
+	cname.setLineHeight(lineheight);
 	cname.setForegroundColor( foregroundColor );
 	cname.setBackgroundColor( backgroundColor );
 	cname.setFlags( RS_FADE );
 
 	ctime.setFont( fn );
+	ctime.setLineHeight(lineheight);
 	ctime.setForegroundColor( foregroundColor );
 	ctime.setBackgroundColor( backgroundColor );
 	ctime.setFlags( RS_FADE );
+
+	cntime.setFont( fn );
+	cntime.setLineHeight(lineheight);
+	cntime.setForegroundColor( foregroundColor );
+	cntime.setBackgroundColor( backgroundColor );
+	cntime.setFlags( RS_FADE );
 
 	gPixmap *pm=eSkin::getActive()->queryImage("sselect_dolby");
 	cdolby.setPixmap(pm);
@@ -69,6 +87,12 @@ void eChannelInfo::init_eChannelInfo()
 	cscrambled.setPixmap(pm);
 	cscrambled.pixmap_position = ePoint(0,0);
 	cscrambled.hide();
+
+	p_event=new eProgress(this);
+	p_event->setName("event_progress");
+	p_event->resize(eSize(80,15));
+	p_event->move(ePoint(140,5));
+	p_event->hide();
 }
 
 const char *eChannelInfo::genresTableShort[256] =
@@ -137,14 +161,22 @@ const char *eChannelInfo::genresTableShort[256] =
 
 void eChannelInfo::ParseEITInfo(EITEvent *e)
 {
-		name=descr=genre=starttime="";
+		name=descr=genre=starttime=endtime="";
 		cflags=0;
 		eString t;
-			
+
+		p_event->hide();
+
 		if(e->start_time!=0)
 		{
 			tm *stime=localtime(&e->start_time);
+			time_t etime=e->start_time + e->duration;
+			time_t ntime=time(0) + eDVB::getInstance()->time_difference;
+			perc=(time(0) - e->start_time + eDVB::getInstance()->time_difference)*100/e->duration;
 			starttime = getTimeStr(stime, 0);
+			endtime = getTimeStr(localtime(&etime),0);
+			nowtime = getTimeStr(localtime(&ntime),0);
+
 			int show_current_remaining=1;
 			eConfig::getInstance()->getKey("/ezap/osd/showCurrentRemaining", show_current_remaining);
 			if (show_current_remaining)
@@ -197,7 +229,8 @@ void eChannelInfo::ParseEITInfo(EITEvent *e)
 				}
 			}
 		}
-		if(!t.isNull()) name += t;
+		if (mode==modePLI)
+			if(!t.isNull()) name += t;
 
 		cname.setText( name );
 		if ( genre.size() )
@@ -207,13 +240,38 @@ void eChannelInfo::ParseEITInfo(EITEvent *e)
 			descr+=genre;
 		}
 		cdescr.setText( descr );
-		ctime.setText( starttime );
+		if(mode == modePLI)
+			ctime.setText( starttime );
+		else
+			ctime.setText( starttime + " - " + endtime);
+
+		cntime.setText(nowtime);
 
 		int n = 0;
-		n = LayoutIcon(&cdolby, (cflags & cflagDolby), n);
-		n = LayoutIcon(&cstereo, (cflags & cflagStereo), n);
-		n = LayoutIcon(&cformat, (cflags & cflagWide), n );
-		n = LayoutIcon(&cscrambled, (cflags & cflagScrambled), n );
+
+		if(mode==modePLI){
+			n = LayoutIcon(&cdolby, (cflags & cflagDolby), n);
+			n = LayoutIcon(&cstereo, (cflags & cflagStereo), n);
+			n = LayoutIcon(&cformat, (cflags & cflagWide), n );
+			n = LayoutIcon(&cscrambled, (cflags & cflagScrambled), n );
+			p_event->hide();
+			cname.show();
+			cdescr.show();
+			copos.show();
+		}
+		else{
+			p_event->setPerc(perc);
+			cname.show();
+			ctime.show();
+			p_event->show();
+			copos.show();
+			cdescr.show();
+			copos.show();
+			cdolby.hide();
+			cstereo.hide();
+			cformat.hide();
+			cscrambled.hide();
+		}
 }
 eString eChannelInfo::GetDescription()  // EPG search 
 {
@@ -238,9 +296,14 @@ void eChannelInfo::getServiceInfo( const eServiceReferenceDVB& service )
 	if (!service.path.size())
 	{
 		DescriptionForEPGSearch = "";  // EPG search
+
+		eServiceDVB* pservice( eDVB::getInstance()->settings->getTransponders()->searchService( service ) );
+		if(pservice)
+			servicename=pservice->service_name;
+		else
+			servicename="";
+
 		cdescr.show();
-		cname.setFlags(RS_FADE);
-		cname.resize( eSize( clientrect.width()/8*7-4, clientrect.height()/3) );
 		int opos=service.getDVBNamespace().get()>>16;
 		if ( eSystemInfo::getInstance()->getFEType() == eSystemInfo::feSatellite )
 			copos.setText(eString().sprintf("%d.%d\xC2\xB0%c", abs(opos / 10), abs(opos % 10), opos>0?'E':'W') );
@@ -260,7 +323,8 @@ void eChannelInfo::getServiceInfo( const eServiceReferenceDVB& service )
 		}
 		else  // we parse the eit...
 		{
-			cname.setText(_("no data for this service available"));
+			//cname.setText(_("no data for this service available"));
+			cname.setText("");
 			eDVBServiceController *sapi=eDVB::getInstance()->getServiceAPI();
 			if (!sapi)
 				return;
@@ -278,7 +342,7 @@ void eChannelInfo::getServiceInfo( const eServiceReferenceDVB& service )
 		copos.setText("");
 		cdescr.hide();
 		cname.setFlags(RS_WRAP);
-		cname.resize( eSize( clientrect.width()/8*7-4, clientrect.height() ));
+		cname.resize( eSize( (clientrect.width()/8)*6-14, clientrect.height() ));
 		// should be moved to eService
 		eString size("\nFilesize: 0kb");
 		int filelength=service.getFileLength();
@@ -303,6 +367,7 @@ void eChannelInfo::getServiceInfo( const eServiceReferenceDVB& service )
 		i++;
 		size.sprintf(_("\nFilesize/date: %d %cB, %s"), filelength > 10240 ? filelength/1024: filelength, filelength > 10240 ? 'M' : 'k', ::ctime(&filetime));
 		cname.setText(eString(_("Filename: "))+service.path.mid( i, service.path.length()-i)+size );
+		servicename=service.path.mid( i, service.path.length()-i);
 	}
 }
 	
@@ -321,6 +386,13 @@ void eChannelInfo::EITready( int err )
 
 void eChannelInfo::update( const eServiceReferenceDVB& service )
 {
+	int percentprogress=0;
+	eConfig::getInstance()->getKey("/ezap/osd/PercentProgress", percentprogress);
+	if(mode!=percentprogress){
+		setDisplayMode(percentprogress);
+		changeSize();
+		redraw(eRect());
+	}
 	if (service)
 	{
 		current = service;
@@ -334,11 +406,14 @@ void eChannelInfo::clear()
 	cname.setText("");
 	cdescr.setText("");
 	ctime.setText("");
+	cntime.setText("");
 	copos.setText("");
 	cdolby.hide();
 	cstereo.hide();
 	cformat.hide();
 	cscrambled.hide();
+	p_event->hide();
+	invalidate(eRect(), 0);
 }
 
 int eChannelInfo::LayoutIcon(eLabel *icon, int doit, int num )
@@ -384,45 +459,87 @@ void eChannelInfo::redrawWidget(gPainter *target, const eRect& where)
 	if ( deco )
 		deco.drawDecoration(target, ePoint(width(), height()));
 
-	target->line( ePoint(clientrect.left() + clientrect.width()/8 + 1, clientrect.top()),ePoint(clientrect.left() + clientrect.width()/8 + 1,clientrect.bottom()-1));
+	if(mode==modePLI)
+		target->line( ePoint(clientrect.left() + clientrect.width()/8 + 1, clientrect.top()),ePoint(clientrect.left() + clientrect.width()/8 + 1,clientrect.bottom()-1));
 }
-
-int eChannelInfo::eventHandler(const eWidgetEvent &event)
+void eChannelInfo::changeSize()
 {
-	switch (event.type)
-	{
-		case eWidgetEvent::changedSize:
-		{
-			if (deco)
-				clientrect=crect;
+		if (deco)
+			clientrect=crect;
 
-			int dx=clientrect.width()/8;
-			int dy=clientrect.height()/3;
-			ctime.move( ePoint(0,0) );
+		int dx=clientrect.width()/8;
+		int dy=(clientrect.height()-6)/4;
+
+		if(mode==modePLI){
+			p_event->hide();
+
+			ctime.move( ePoint(0,3) );
 			ctime.resize( eSize(dx, 36 ));
 
-			cname.move( ePoint( dx + 4, 0 ) );
+			cname.move( ePoint( dx + 4, 3 ) );
+			cname.resize( eSize( dx*6-14, dy ));
+			cname.show();
+			cntime.hide();
 
-			cdescr.move( ePoint(dx + 4, dy) );
-			cdescr.resize( eSize( clientrect.width() - (dx*2 + 4), dy+dy) );
+			int cdescrHeight=(dy>lineheight)?lineheight+lineheight:dy+dy;
+			cdescr.move( ePoint(dx + 4, dy+3) );
+			cdescr.resize( eSize( clientrect.width() - (dx*2 + 4),cdescrHeight ) );
 
-			copos.move( ePoint( clientrect.width() - (dx+4), dy+dy) );
+			copos.move( ePoint( clientrect.width() - (dx+10), 3) );
 			copos.resize( eSize(dx + 4, dy) );
+			copos.show();
 
 			cdolby.resize( eSize(25,15) );
 			cstereo.resize( eSize(25,15) );
 			cformat.resize( eSize(25,15) );
 			cscrambled.resize( eSize(25,15) );
+		} else{
 
-			invalidate();
+			cname.move( ePoint( 10, 3) );
+			cname.resize( eSize( dx*7-10, dy ));
+			cname.show();
+
+			ctime.move( ePoint(50,dy+3) );
+			ctime.resize( eSize(120, dy));
+
+			p_event->move(ePoint(180,dy+3+dy/2-p_event->getSize().height()/2));
+
+			cntime.move( ePoint(280,dy+3) );
+			cntime.resize( eSize(80, dy));
+			cntime.show();
+
+			cdescr.move( ePoint(10, dy+dy+3) );
+			int cdescrHeight=(dy>lineheight)?lineheight+lineheight:dy+dy;
+			cdescr.resize( eSize( clientrect.width() - 20, cdescrHeight) );
+
+			copos.move( ePoint( clientrect.width() - (dx+10), 3) );
+			copos.resize( eSize(dx + 4, dy) );
+
+			cdolby.hide();
+			cstereo.hide();
+			cformat.hide();
+			cscrambled.hide();
+		}
+		invalidate();
+
+}
+int eChannelInfo::eventHandler(const eWidgetEvent &event)
+{
+	switch (event.type)
+	{
+		case eWidgetEvent::changedSize:
+			changeSize();
 			break;
-    }
 		default:
-		break;
+			break;
 	}
 	return eDecoWidget::eventHandler(event);
 }
 
+void eChannelInfo::setDisplayMode(int mode)
+{
+	this->mode=mode;
+}
 static eWidget *create_eChannelInfo(eWidget *parent)
 {
 	return new eChannelInfo(parent);

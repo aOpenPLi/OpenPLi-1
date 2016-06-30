@@ -82,15 +82,16 @@ void eListBoxBase::recalcMaxEntries()
 		MaxEntries = height();
 	int tmp = MaxEntries;
 	MaxEntries /= item_height;
-/*	eDebug("height = %d, MaxEntries = %d, item height = %d",
+	/*eDebug("height = %d, MaxEntries = %d, item height = %d",
 		tmp, MaxEntries, item_height);*/
-	// das ist echt mal komischer code hier.. aber funktioniert :)
-	// damit werden listboxen automatisch auf die hˆhe resized,
-	// die benˆtigt wird damit alle entrys genau sichtbar sind..
-	// und kein Rand bleibt..
+
+	// The code here is really funny times .. but works:)
+	// Make list boxes are automatically resized to the height,
+	// Needed so that all entrys are just visible ..
+	// And no edge remains ..
 	if ( tmp - ( MaxEntries*item_height ) > 0 )
 	{
-		if ( !removed_height_pixel )
+		if ( (!removed_height_pixel) || (MaxEntries && !(flags & flagShowPartial)) )
 		{
 			removed_height_pixel = height() - ((MaxEntries*item_height) + decoheight);
 			resize( eSize( size.width(), height()-removed_height_pixel ) );
@@ -110,6 +111,7 @@ void eListBoxBase::recalcMaxEntries()
 				removed_height_pixel += tmp;
 			}
 		}
+
 	}
 /*	else
 		eDebug("is ok .. do nothing");*/
@@ -124,7 +126,7 @@ eRect eListBoxBase::getEntryRect(int pos)
 			// in case we show partial last lines (which only works in single-column),
 			// we increase MaxEntries by one since we don't want the last line
 			// one the next (invisible) column
-	if ( (columns == 1) && (flags & flagShowPartial))
+	if ( (columns == 1) && (flags & flagShowPartial) && entries==(unsigned int)(MaxEntries+1))
 		++lme;
 	if ( deco_selected && have_focus )
 		return eRect( ePoint( deco_selected.borderLeft + ( ( pos / lme) * ( crect_selected.width() / columns ) ) , deco_selected.borderTop + ( pos % lme) * item_height ), eSize( (crect_selected.width() / columns) - (sbar?scrollbar->width()+5:columns>1?5:0), item_height ) );
@@ -170,6 +172,14 @@ int eListBoxBase::setProperty(const eString &prop, const eString &value)
 		return eDecoWidget::setProperty(prop, value);
 
 	return 0;
+}
+void eListBoxBase::setItemHeight(int itemHeight)
+{
+	if(!itemHeight)return;
+
+	item_height=itemHeight;
+	event(eWidgetEvent(eWidgetEvent::changedSize));
+
 }
 
 void eListBoxBase::recalcScrollBar()
@@ -342,7 +352,7 @@ int eListBoxBase::setCurrent(const eListBoxEntry *c, bool sendSelected )
 		while (newCurPos == -1 && MaxEntries)  // MaxEntries is already checked above...
 		{
 			if ( bottom != childs.end() )
-				top = bottom;		// n‰chster Durchlauf
+				top = bottom;		// nÈãçhster Durchlauf
 
 			for (i = 0; (i < (MaxEntries*columns) ) && (bottom != childs.end()); ++bottom, ++i)
 			{
@@ -375,6 +385,22 @@ int eListBoxBase::setCurrent(const eListBoxEntry *c, bool sendSelected )
 	}
 
 	return OK;
+}
+
+int eListBoxBase::getPos(const eListBoxEntry *c)
+{
+	ePtrList<eListBoxEntry>::iterator item(childs.begin());
+
+	int cnt=0;
+	for ( ; item != childs.end(); ++item, ++cnt)
+		if ( *item == c )
+			break;
+
+	if ( item == childs.end() ) // entry not in listbox... do nothing
+		return -1;
+
+	return cnt;
+
 }
 
 void eListBoxBase::append(eListBoxEntry* entry, bool holdCurrent, bool front)
@@ -1303,13 +1329,15 @@ int eListBoxEntryTextStream::getEntryHeight()
 
 int calcFontHeight( const gFont& font)
 {
-	eTextPara *test;
+/*	eTextPara *test;
 	test = new eTextPara( eRect(0,0,100,50) );
 	test->setFont( font );
 	test->renderString("Mjdyl");
 	int i =  test->getBoundBox().height();
 	test->destroy();
 	return i;
+*/
+	return font.pointSize;
 }
 
 const eString& eListBoxEntryText::redraw(gPainter *rc, const eRect& rect, gColor coActiveB, gColor coActiveF, gColor coNormalB, gColor coNormalF, int state)
@@ -1397,8 +1425,9 @@ const eString& eListBoxEntryText::redraw(gPainter *rc, const eRect& rect, gColor
 		para->setFont( font );
 		para->renderString(text);
 		para->realign(align);
-//		yOffs = ((rect.height() - para->getBoundBox().height()) / 2 + 0) - para->getBoundBox().top() ;
-		yOffs=0;
+//		yOffs = ((rect.height() - para->getBoundBox().height()) / 2 ) - para->getBoundBox().top() ;
+//		yOffs=0;
+		yOffs = (rect.height() - getEntryHeight() + 4 ) / 2;
 	}
 	rc->renderPara(*para, ePoint( lft, rect.top()+yOffs ) );
 
@@ -1499,7 +1528,9 @@ eListBoxEntryCheck::eListBoxEntryCheck( eListBox<eListBoxEntryMenu> *lb, const e
 void eListBoxEntryCheck::setChecked(int checkIt)
 {
 	checked = checkIt;
-	listbox->invalidateCurrent();
+	if(regKey)
+		eConfig::getInstance()->setKey( regKey.c_str(), checked );
+	listbox->invalidateEntry(listbox->getPos(this));
 }
 
 void eListBoxEntryCheck::LBSelected(eListBoxEntry* t)

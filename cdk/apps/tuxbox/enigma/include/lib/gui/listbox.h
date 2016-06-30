@@ -76,6 +76,8 @@ public:
 	void clearList();
 	int getCount() { return entries; }
 	int setCurrent(const eListBoxEntry *c, bool sendSelected=false);
+	int getPos(const eListBoxEntry *c);
+	void setItemHeight(int item_height);
 	void sort();
 	void shuffle();
 	int moveSelection(int dir, bool sendSelected=false);
@@ -103,8 +105,8 @@ class eListBox: public eListBoxBase
 public:
 	Signal1<void, T*> selected;
 	Signal1<void, T*> selchanged;
-	eListBox(eWidget *parent, const eWidget* descr=0, int takefocus=1 )
-		:eListBoxBase( parent, descr, takefocus, T::getEntryHeight() )
+	eListBox(eWidget *parent, const eWidget* descr=0, int takefocus=1)
+		:eListBoxBase( parent, descr, takefocus, T::getEntryHeight())
 	{
 	}
 	T* getCurrent()	{ return (T*)eListBoxBase::getCurrent(); }
@@ -424,6 +426,7 @@ public:
 	eListBoxEntryCheck( eListBox<eListBoxEntryMenu> *lb, const char* text, const char* regkey, const eString& hlptxt="" );
 	eListBoxEntryCheck( eListBox<eListBoxEntryMenu> *lb, const eString& text, const eString& hlptxt="", int align=0, void* key = NULL, int keytype = value );
 	void setChecked(int checkIt);
+	int  getChecked(){return checked;}
 	const eString& redraw(gPainter *rc, const eRect& rect, gColor coActiveB, gColor coActiveF, gColor coNormalB, gColor coNormalF, int state );
 };
 

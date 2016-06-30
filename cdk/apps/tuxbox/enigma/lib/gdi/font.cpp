@@ -24,6 +24,7 @@
 #include <lib/system/elock.h>
 #include <lib/system/init.h>
 #include <lib/system/init_num.h>
+#include <lib/system/econfig.h>
 
 #define HAVE_FRIBIDI
 // until we have it in the cdk
@@ -222,7 +223,7 @@ float fontRenderClass::getLineHeight(const gFont& font)
 		return 0;
 	}
 	int linegap=current_face->size->metrics.height-(current_face->size->metrics.ascender+current_face->size->metrics.descender);
-	float height=(current_face->size->metrics.ascender+current_face->size->metrics.descender+linegap/2.0)/64;
+	float height=(current_face->size->metrics.ascender+current_face->size->metrics.descender+linegap/2.0)/64;  
 	delete fnt;
 	return height;
 }
@@ -303,6 +304,15 @@ int eTextPara::appendGlyph(Font *current_font, FT_Face current_face, FT_UInt gly
 	FTC_SBit glyph;
 	if (current_font->getGlyphBitmap(glyphIndex, &glyph))
 		return 1;
+	static int is1bytelang=-1;
+	if( is1bytelang == -1){
+		char *lang=0;
+		eConfig::getInstance()->getKey("/elitedvb/language", lang); // fetch selected OSD country
+		if(lang && 0==strncmp(lang,"zh",2))
+			is1bytelang=0;
+		else
+			is1bytelang=1;
+	}
 
 	int nx=cursor.x();
 
@@ -314,7 +324,8 @@ int eTextPara::appendGlyph(Font *current_font, FT_Face current_face, FT_UInt gly
 		glyphString::reverse_iterator i(glyphs.rbegin());
 		while (i != glyphs.rend())
 		{
-			if (i->flags&(GS_ISSPACE|GS_ISFIRST))
+			if ( (i->flags&(GS_ISSPACE|GS_ISFIRST) && is1bytelang==1)  //one byte language
+			   || (i->flags&(GS_ISFIRST) && is1bytelang==0) )   //multi bytes language
 				break;
 			cnt++;
 			++i;
@@ -405,7 +416,18 @@ void eTextPara::calc_bbox()
 	if ( glyphs.size() )
 		bboxValid=1;
 }
+void eTextPara::setLineHeight(int lineheight)
+{
+	lineHeight=lineheight;
+}
 
+int eTextPara::getLineHeight()
+{
+	int linegap=current_face->size->metrics.height-(current_face->size->metrics.ascender+current_face->size->metrics.descender);
+	if(!lineHeight)
+		lineHeight=((current_face->size->metrics.ascender+current_face->size->metrics.descender+linegap/2)/64); 
+	return lineHeight;
+}
 void eTextPara::newLine(int flags)
 {
 	if (maximum.width()<cursor.x())
@@ -413,8 +435,10 @@ void eTextPara::newLine(int flags)
 	cursor.setX(left);
 	previous=0;
 	int linegap=current_face->size->metrics.height-(current_face->size->metrics.ascender+current_face->size->metrics.descender);
-	cursor+=ePoint(0, (current_face->size->metrics.ascender+current_face->size->metrics.descender+linegap*1/2)>>6);
-	if (maximum.height()<cursor.y())
+	if(!lineHeight)
+		lineHeight=((current_face->size->metrics.ascender+current_face->size->metrics.descender+linegap/2)/64); 
+	cursor+=ePoint(0, lineHeight);
+	if (maximum.height()<(cursor.y()+lineHeight))
 		maximum.setHeight(cursor.y());
 	previous=0;
 }
@@ -516,6 +540,8 @@ void eTextPara::setFont(Font *fnt, Font *replacement)
 #endif
 	previous=0;
 	use_kerning=FT_HAS_KERNING(current_face);
+	int linegap=current_face->size->metrics.height-(current_face->size->metrics.ascender+current_face->size->metrics.descender);
+	lineHeight=((current_face->size->metrics.ascender+current_face->size->metrics.descender+linegap*1/2)/64); 
 }
 
 void
