@@ -184,24 +184,7 @@ void eEPGMemStore::processEpgRecord( uniqueEPGKey epgKey, int source, __u8 *eitD
 		timeMap::iterator tm_it_tmp =
 			servicemap.second.find(ev_it->second->getStartTime());
 		if ( tm_it_tmp != servicemap.second.end() )
-		{
-			if ( tm_it_tmp->first == TM ) // correct eventData
-			{
-							// exempt memory
-				delete ev_it->second;
-				evt = new eventData(eit_event, eit_event_size, source);
-				ev_it->second=evt;
-				tm_it_tmp->second=evt;
-				return;
-			}
-			else
-			{
-				tm_erase_count++;
-				// delete the found record from timemap
-				servicemap.second.erase(tm_it_tmp);
-				prevTimeIt=servicemap.second.end();
-			}
-		}
+			tm_erase_count++;
 	}
 
 // search in timemap, for check of a case if new time has coincided with time of other event
@@ -221,36 +204,11 @@ void eEPGMemStore::processEpgRecord( uniqueEPGKey epgKey, int source, __u8 *eitD
 		if ( ev_it_tmp != servicemap.first.end() )
 		{
 			ev_erase_count++;
-			// delete the found record from eventmap
-			servicemap.first.erase(ev_it_tmp);
-			prevEventIt=servicemap.first.end();
 		}
 	}
 
 	evt = new eventData(eit_event, eit_event_size, source);
-	if (ev_erase_count > 0 && tm_erase_count > 0) // 2 different pairs have been removed
-	{
-		// exempt memory
-		delete ev_it->second;
-		delete tm_it->second;
-		ev_it->second=evt;
-		tm_it->second=evt;
-	}
-	else if (ev_erase_count == 0 && tm_erase_count > 0)
-	{
-		// exempt memory
-		delete ev_it->second;
-		tm_it=prevTimeIt=servicemap.second.insert( prevTimeIt, std::pair<const time_t, eventData*>( TM, evt ) );
-		ev_it->second=evt;
-	}
-	else if (ev_erase_count > 0 && tm_erase_count == 0)
-	{
-		// exempt memory
-		delete tm_it->second;
-		ev_it=prevEventIt=servicemap.first.insert( prevEventIt, std::pair<const __u16, eventData*>( event_id, evt) );
-		tm_it->second=evt;
-	}
-	else // added new eventData
+	if (ev_erase_count == 0 && tm_erase_count == 0)
 	{
 		prevEventIt=servicemap.first.insert( prevEventIt, std::pair<const __u16, eventData*>( event_id, evt) );
 		prevTimeIt=servicemap.second.insert( prevTimeIt, std::pair<const time_t, eventData*>( TM, evt ) );
