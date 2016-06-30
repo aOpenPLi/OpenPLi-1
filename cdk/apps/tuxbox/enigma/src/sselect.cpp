@@ -175,7 +175,7 @@ eListBoxEntryService::eListBoxEntryService(eListBoxExt<eListBoxEntryService> *lb
 }
 void eListBoxEntryService::init_eListBoxEntryService()
 {
-	static char strfilter[4] = { 0xC2, 0x87, 0x86, 0x00 };
+//	static char strfilter[4] = { 0xC2, 0x87, 0x86, 0x00 };
 	if (!(flags & flagIsReturn))
 	{
 #if 0
@@ -195,8 +195,8 @@ void eListBoxEntryService::init_eListBoxEntryService()
 		sort.upper();
 
 		// filter short name brakets...
-		for (eString::iterator it(sort.begin()); it != sort.end();)
-			strchr( strfilter, *it ) ? it = sort.erase(it) : it++;
+		//for (eString::iterator it(sort.begin()); it != sort.end();)
+		//	strchr( strfilter, *it ) ? it = sort.erase(it) : it++;
 
 #endif
 	} else
