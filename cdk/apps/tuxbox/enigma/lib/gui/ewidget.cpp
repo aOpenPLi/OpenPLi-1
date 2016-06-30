@@ -9,6 +9,9 @@
 #include <lib/gui/guiactions.h>
 #include <lib/system/init.h>
 #include <lib/system/init_num.h>
+#include <streaminfo.h>
+#include <enigma_main.h>
+#include <lib/driver/eavswitch.h>
 
 extern eWidget *currentFocus;
 
@@ -241,6 +244,11 @@ void eWidget::valign()
 		config->getKey("/enigma/plugins/needoffsets/left", offsetLeft);
 		config->getKey("/enigma/plugins/needoffsets/right", offsetRight);
 		config->getKey("/enigma/plugins/needoffsets/bottom", offsetBottom);
+
+		if (offsetBottom>480)               //offset is setted for PAL
+			offsetBottom=(eAVSwitch::getInstance()->getVSystem() == vsNTSC )?(offsetBottom-(576-480)):offsetBottom;
+		else                                //offset is setted for NTSC
+			offsetBottom=(eAVSwitch::getInstance()->getVSystem() == vsNTSC )?offsetBottom:(offsetBottom+(576-480));
 		
 		move(ePoint(
 			(offsetRight - offsetLeft - size.width())/2 + offsetLeft,
@@ -285,7 +293,24 @@ void eWidget::redraw(eRect area)		// area bezieht sich nicht auf die clientarea
 		}
 	}
 }
+void eWidget::resetPositionSize()
+{
+	if(sPosition)setProperty("position",sPosition);
+	if(scPosition)setProperty("cposition",scPosition);
+	if(sSize)setProperty("size",sSize);
+	if(scSize)setProperty("csize",scSize);
 
+	if (!childlist.empty())
+	{
+		ePtrList<eWidget>::iterator It(childlist);
+		while(It != childlist.end())
+		{
+			It->resetPositionSize();
+			++It;
+		}
+	}
+
+}
 void eWidget::invalidate(eRect area, int force)
 {
 	if ( (!(state & stateVisible)) && (!force))
@@ -1021,6 +1046,10 @@ int eWidget::parse(const char* p, int *v, int *e, int max)
 
 int eWidget::setProperty(const eString &prop, const eString &value)
 {
+	unsigned int tvsystem = 0;
+	if(parent==root)
+		eConfig::getInstance()->getKey("/elitedvb/video/tvsystem", tvsystem );
+
 	if (prop=="position")
 	{
 		int v[2], e[2]={0, 0};
@@ -1028,11 +1057,22 @@ int eWidget::setProperty(const eString &prop, const eString &value)
 		{
 			e[0]=parent->clientrect.width();
 			e[1]=parent->clientrect.height();
+			if(parent==root && tvsystem>2)
+			{
+				int vhsize=getVidSize().height();
+				if(!vhsize)vhsize=eZapMain::getInstance()->lastvsize.height();
+				if(!vhsize)vhsize=576;
+
+				if(vhsize)
+					e[1]=vhsize;
+
+			}
 		}
 		int err=parse(value.c_str(), v, e, 2);
 		if (err)
 			return err;
 		move(ePoint(v[0], v[1]));
+		if(!sPosition)sPosition=value;
 	}
 	else if (prop=="cposition")
 	{
@@ -1042,12 +1082,23 @@ int eWidget::setProperty(const eString &prop, const eString &value)
 		{
 			e[0]=parent->clientrect.width();
 			e[1]=parent->clientrect.height();
+			if(parent==root && tvsystem>2)
+			{
+				int vhsize=getVidSize().height();
+				if(!vhsize)vhsize=eZapMain::getInstance()->lastvsize.height();
+				if(!vhsize)vhsize=576;
+
+				if(vhsize)
+					e[1]=vhsize;
+
+			}
 		}
 		int err=parse(value.c_str(), v, e, 2);
 		if (err)
 			return err;
 
 		cmove(ePoint(v[0], v[1]));
+		if(!scPosition)scPosition=value;
 	}
 	else if (prop=="size")
 	{
@@ -1057,11 +1108,22 @@ int eWidget::setProperty(const eString &prop, const eString &value)
 		{
 			e[0]=parent->clientrect.width()-position.x();
 			e[1]=parent->clientrect.height()-position.y();
+			if(parent==root && tvsystem>2)
+			{
+				int vhsize=getVidSize().height();
+				if(!vhsize)vhsize=eZapMain::getInstance()->lastvsize.height();
+				if(!vhsize)vhsize=576;
+
+				if(vhsize)
+					e[1]=vhsize-position.y();
+
+			}
 		}
 		int err=parse(value.c_str(), v, e, 2);
 		if (err)
 			return err;
 		resize(eSize(v[0], v[1]));
+		if(!sSize)sSize=value;
 	}
 	else if (prop=="csize")
 	{
@@ -1071,11 +1133,22 @@ int eWidget::setProperty(const eString &prop, const eString &value)
 		{
 			e[0]=parent->clientrect.width()-position.x();
 			e[1]=parent->clientrect.height()-position.y();
+			if(parent==root && tvsystem>2)
+			{
+				int vhsize=getVidSize().height();
+				if(!vhsize)vhsize=eZapMain::getInstance()->lastvsize.height();
+				if(!vhsize)vhsize=576;
+
+				if(vhsize)
+					e[1]=vhsize-position.y();
+
+			}
 		}
 		int err=parse(value.c_str(), v, e, 2);
 		if (err)
 			return err;
 		cresize(eSize(v[0], v[1]));
+		if(!scSize)scSize=value;
 	}
 	else if (prop=="text")
 /*	{

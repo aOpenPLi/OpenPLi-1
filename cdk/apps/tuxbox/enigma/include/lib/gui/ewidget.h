@@ -206,6 +206,7 @@ protected:
 	gPixmap *pixmap;
 
 	eString descr;
+	eString sPosition,scPosition,sSize,scSize;
 
 public:
 	virtual int eventHandler(const eWidgetEvent &event);
@@ -357,6 +358,9 @@ public:
 	 * \sa eWidget::redraw
 	 */
 	void invalidate(eRect area=eRect(), int force=0);
+
+	//reset position and size in skin defined
+	void resetPositionSize();
 	
 	/**
 	 * \brief Enters modal message loop.

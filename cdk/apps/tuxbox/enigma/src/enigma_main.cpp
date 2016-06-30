@@ -2313,6 +2313,7 @@ void eZapMain::init_main()
 
 	cur_start=cur_duration=-1;
 	cur_event_text="";
+	lastvsize=eSize(0,0);
 	cur_event_id=-1;
 
 	CONNECT(eServiceInterface::getInstance()->serviceEvent, eZapMain::handleServiceEvent);
@@ -3642,6 +3643,7 @@ void eZapMain::standbyRelease()
 standby:
 		if ( !enigmaVCR::getInstance() )
 		{
+			lastvsize=getVidSize();
 			eZapStandby standby;
 			hide();
 			standby.show();
@@ -3666,6 +3668,7 @@ standby:
 #ifndef DISABLE_FILE
 			beginPermanentTimeshift();
 #endif
+			resetPositionAndSize();
 		}
 	}
 }
@@ -7646,6 +7649,30 @@ void showMP3Pic()
 		showRadioPic();
 }
 
+void eZapMain::resetPositionAndSize()
+{
+	unsigned int tvsystem = 0;
+	eConfig::getInstance()->getKey("/elitedvb/video/tvsystem", tvsystem );
+	if(tvsystem >2){	//not pal only nor ntsc only
+		int vhsize=getVidSize().height();
+		if(!vhsize)vhsize=lastvsize.height();
+		if(!vhsize)vhsize=576;
+
+		eWidget * desktop_fb=eZap::getInstance()->getDesktop(eZap::desktopFB);
+		desktop_fb->resetPositionSize();
+
+		int pal_offset=eSkin::getActive()->queryValue("PAL_OFFSET", 0);
+		int ntsc_offset=eSkin::getActive()->queryValue("NTSC_OFFSET", 0);
+		ePoint pos=getPosition();
+
+		if(vhsize==576)pos.setY(pos.y()+pal_offset);
+		if(vhsize==480)pos.setY(pos.y()+ntsc_offset);
+
+		move((const ePoint &)pos);
+
+		desktop_fb->invalidate(eRect(), 1);
+	}
+}
 void eZapMain::handleServiceEvent(const eServiceEvent &event)
 {
 	if ( Decoder::locked == 2 )  // timer zap in background
@@ -7686,11 +7713,17 @@ void eZapMain::handleServiceEvent(const eServiceEvent &event)
 	}
 	case eServiceEvent::evtAspectChanged:
 	{
-		int aspect = eServiceInterface::getInstance()->getService()->getAspectRatio();
+		int aspect = ((eServiceHandlerDVB *)eServiceInterface::getInstance()->getService())->getAspectRatio();
 		set16_9Logo(aspect);
         	VidFormat->setText(getVidFormat());
 		break;
 	}
+	case eServiceEvent::evtVideoSystemChanged:
+	{
+		resetPositionAndSize();
+		break;
+	}
+
 	case eServiceEvent::evtStart:
 	{
 		int err = eServiceInterface::getInstance()->getService()->getErrorInfo();

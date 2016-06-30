@@ -424,6 +424,10 @@ private:
 //#endif
 	eFixedMessagePump<eEPGCache::Message> epg_messages;
 
+public:
+	eSize lastvsize;
+
+private:
 	eTimer timeout, clocktimer, messagetimeout,
 					progresstimer, volumeTimer, recStatusBlink,
 					doubleklickTimer, unusedTimer, permanentTimeshiftTimer, epgNowNextTimer;
@@ -558,6 +562,7 @@ private:
 	void SoftcamNameChanged(const char *newname);
 	void usedCaidChanged(int newcaid);
 	void SoftcamInfoChanged(const char *newSoftcamInfo);
+	void resetPositionAndSize();
 
 #ifndef DISABLE_FILE
 	int skipcounter;
