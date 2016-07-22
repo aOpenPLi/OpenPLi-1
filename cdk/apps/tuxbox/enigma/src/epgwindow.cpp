@@ -115,8 +115,8 @@ void eListBoxEntryEPG::build()
 		descr = now_text; 	// EPG search
 }
 
-eListBoxEntryEPG::eListBoxEntryEPG(const eit_event_struct* evt, eListBox<eListBoxEntryEPG> *listbox, eServiceReference &ref, int type)
-		:eListBoxEntry((eListBox<eListBoxEntry>*)listbox), paraDate(0), paraTime(0), paraDescr(0), event(evt,(((eServiceReferenceDVB&)ref).getTransportStreamID().get()<<16)|((eServiceReferenceDVB&)ref).getOriginalNetworkID().get(), type), service(ref)
+eListBoxEntryEPG::eListBoxEntryEPG(const eit_event_struct* evt, eListBox<eListBoxEntryEPG> *listbox, eServiceReference &ref, int type,int source)
+		:eListBoxEntry((eListBox<eListBoxEntry>*)listbox), paraDate(0), paraTime(0), paraDescr(0), event(evt,(((eServiceReferenceDVB&)ref).getTransportStreamID().get()<<16)|((eServiceReferenceDVB&)ref).getOriginalNetworkID().get(), type,source), service(ref)
 {
 	build();
 }
@@ -149,7 +149,7 @@ const eString &eListBoxEntryEPG::redraw(gPainter *rc, const eRect& rect, gColor 
 			paraDate->destroy();
 		paraDate = new eTextPara( eRect( 0, 0, dateXSize, rect.height()) );
 		paraDate->setFont( TimeFont );
-		hlp.sprintf("%02d.%02d.", start_time.tm_mday, start_time.tm_mon + 1);
+		hlp.sprintf("%02d.%02d", start_time.tm_mon + 1 , start_time.tm_mday);
 		paraDate->renderString( eString(dayStrShort[start_time.tm_wday])+' '+hlp );
 		paraDate->realign( eTextPara::dirRight );
 		// TimeYOffs = ((rect.height() - paraDate->getBoundBox().height()) / 2 ) - paraDate->getBoundBox().top();
@@ -523,11 +523,13 @@ bool LocalEventData::language_exists(EITEvent *event, eString lang)
 {
 	ShortEventName=ExtendedEventText=ShortEventText="";
 	bool retval=0;
+	int tsidonid=0;
 	for (ePtrList<Descriptor>::iterator descriptor(event->descriptor); descriptor != event->descriptor.end(); ++descriptor)
 	{
 		if (descriptor->Tag() == DESCR_SHORT_EVENT)
 		{
 			ShortEventDescriptor *ss = (ShortEventDescriptor*)*descriptor;
+			tsidonid=ss->tsidonid;
 			if (!lang || !strncasecmp(lang.c_str(), ss->language_code, 3) )
 			{
 				ShortEventName=ss->event_name;
@@ -538,9 +540,13 @@ bool LocalEventData::language_exists(EITEvent *event, eString lang)
 		else if (descriptor->Tag() == DESCR_EXTENDED_EVENT)
 		{
 			ExtendedEventDescriptor *ss = (ExtendedEventDescriptor*)*descriptor;
+			tsidonid=ss->tsidonid;
 			if (!lang || !strncasecmp(lang.c_str(), ss->language_code, 3) )
 			{
-				ExtendedEventText += ss->text;
+				eString txt=ss->old_text;
+				if(txt.size() && txt.at(0)<0x20 && ExtendedEventText.size())
+					txt.erase(0,1);
+				ExtendedEventText += txt;
 				retval=1;
 			}
 		}
@@ -548,12 +554,19 @@ bool LocalEventData::language_exists(EITEvent *event, eString lang)
 	if (retval > 0)
 	{
 		if (ShortEventText == ShortEventName) ShortEventText = "";
-		if (ExtendedEventText == ShortEventText || ExtendedEventText == ShortEventName) ExtendedEventText = "";
+		if (ExtendedEventText == ShortEventText || ExtendedEventText == ShortEventName) 
+			ExtendedEventText = "";
+		else
+			ExtendedEventText = convertDVBUTF8((const unsigned char *)(ExtendedEventText.c_str()),
+								ExtendedEventText.size(),
+								tsidonid,
+								event->source
+							   );
 	}
 	return retval;
 }
 
-const char MAX_LANG = 41;
+const char MAX_LANG = 47;
 /* OSD language (see /share/locales/locales) to iso639 conversion table */
 eString ISOtbl[MAX_LANG][2] =
 {
@@ -597,7 +610,13 @@ eString ISOtbl[MAX_LANG][2] =
 	{"sr_YU","scc"},
 	{"sv_SE","swe"},
 	{"tr_TR","tur"},
-	{"ur_IN","urd"}
+	{"ur_IN","urd"},
+	{"zh_CN","chi"},    /* or 'zho'  */
+	{"zh_CN","zho"},
+	{"zh_HK","chi"},    /* or 'zho'  */
+	{"zh_HK","zho"},
+	{"zh_TW","chi"},    /* or 'zho'  */
+	{"zh_TW","zho"}
 };
 
 LocalEventData::LocalEventData()
@@ -692,20 +711,34 @@ void LocalEventData::getLocalData(EITEvent *event, eString *name, eString *desc)
 	if ( desc )
 	{
 		*desc = ShortEventText;
-		if (ShortEventText && ExtendedEventText)
+
+		int showAllEventText=0;
+		eConfig::getInstance()->getKey("/ezap/osd/showAllEventText",showAllEventText);
+		if (ExtendedEventText )
 		{
-			/*
-			 * Bit of a hack, some providers put the event description partly in the short descriptor,
-			 * and the remainder in extended event descriptors.
-			 * We cannot really recognise this, but we'll use the length of the short description
-			 * to guess whether we should concatenate both descriptions (without any spaces),
-			 * or put a few linefeeds in between.
-			 */
-			if (ShortEventText.size() < 180)
+
+			unsigned int s1 = ShortEventText.size();
+			unsigned int s2 = ExtendedEventText.size();
+			if ( s2 && !strncmp( ShortEventText.c_str(), ExtendedEventText.c_str(), s2 < s1 ? s2 : s1 ) )
+				ShortEventText.clear();
+
+			if(showAllEventText)
 			{
-				*desc += "\n\n";
+				/*
+				 * Bit of a hack, some providers put the event description partly in the short descriptor,
+				 * and the remainder in extended event descriptors.
+				 * We cannot really recognise this, but we'll use the length of the short description
+				 * to guess whether we should concatenate both descriptions (without any spaces),
+				 * or put a few linefeeds in between.
+				 */
+				if (ShortEventText.size() < 180)
+				{
+					*desc += "\n\n";
+				}
+				*desc += ExtendedEventText;
 			}
+			else
+				*desc=ExtendedEventText;
 		}
-		*desc += ExtendedEventText;
 	}
 }
