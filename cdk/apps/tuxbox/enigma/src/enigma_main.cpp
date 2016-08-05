@@ -247,27 +247,27 @@ eString getDateStr(tm *t, int flags)
       switch (flags&7)
       {
          case 0:
-            clock=eString().sprintf("%s, %2d %s",dayStrShort[t->tm_wday], t->tm_mday, monStrShort[t->tm_mon]);
+            clock=eString().sprintf("%2d %s ,%s", monStrShort[t->tm_mon], t->tm_mday,dayStrShort[t->tm_wday]);
             charBeforeYear=' ';
 	    break;
          case 1:
-            clock=eString().sprintf("%s, %2d %s",dayStrLong[t->tm_wday], t->tm_mday, monStrLong[t->tm_mon]);
+            clock=eString().sprintf("%2d %s ,%s", monStrLong[t->tm_mon], t->tm_mday,dayStrLong[t->tm_wday]);
             charBeforeYear=' ';
             break;
          case 2:
-            clock=eString().sprintf("%s %02d-%02d",dayStrLong[t->tm_wday], t->tm_mday, t->tm_mon+1);
+            clock=eString().sprintf("%02d-%02d %s", t->tm_mon+1, t->tm_mday,dayStrLong[t->tm_wday]);
             charBeforeYear='-';
             break;
          case 3:
-            clock=eString().sprintf("%s %02d.%02d",dayStrLong[t->tm_wday], t->tm_mday, t->tm_mon+1);
+            clock=eString().sprintf("%02d.%02d %s", t->tm_mon+1, t->tm_mday,dayStrLong[t->tm_wday]);
             charBeforeYear='.';
             break;
          case 4:
-            clock=eString().sprintf("%02d-%02d",t->tm_mday, t->tm_mon+1);
+            clock=eString().sprintf("%02d-%02d", t->tm_mon+1,t->tm_mday);
             charBeforeYear='-';
             break;
          case 5:
-            clock=eString().sprintf("%02d.%02d",t->tm_mday, t->tm_mon+1);
+            clock=eString().sprintf("%02d.%02d", t->tm_mon+1,t->tm_mday);
             charBeforeYear='.';
             break;
       }
@@ -277,19 +277,19 @@ eString getDateStr(tm *t, int flags)
       switch (flags&7)
       {
          case 0:
-            clock=eString().sprintf("%s, %s %2d",dayStrShort[t->tm_wday], monStrShort[t->tm_mon], t->tm_mday);
+            clock=eString().sprintf("%s %2d ,%s", monStrShort[t->tm_mon], t->tm_mday,dayStrShort[t->tm_wday]);
             charBeforeYear=' ';
 	    break;
          case 1:
-            clock=eString().sprintf("%s, %s %2d",dayStrLong[t->tm_wday], monStrLong[t->tm_mon], t->tm_mday);
+            clock=eString().sprintf("%s %2d ,%s", monStrLong[t->tm_mon], t->tm_mday,dayStrLong[t->tm_wday]);
             charBeforeYear=' ';
             break;
          case 2:
-            clock=eString().sprintf("%s %02d-%02d",dayStrLong[t->tm_wday], t->tm_mon+1, t->tm_mday);
+            clock=eString().sprintf("%02d-%02d %s", t->tm_mon+1, t->tm_mday,dayStrLong[t->tm_wday]);
             charBeforeYear='-';
             break;
          case 3:
-            clock=eString().sprintf("%s %02d.%02d",dayStrLong[t->tm_wday], t->tm_mon+1, t->tm_mday);
+            clock=eString().sprintf("%02d.%02d %s", t->tm_mon+1, t->tm_mday,dayStrLong[t->tm_wday]);
             charBeforeYear='.';
             break;
          case 4:
@@ -305,10 +305,10 @@ eString getDateStr(tm *t, int flags)
    switch ((flags&24)>>3)
    {
       case 1:
-           clock+=eString().sprintf("%c%02d",charBeforeYear,t->tm_year % 100);
+           clock=eString().sprintf("20%02d%c",t->tm_year % 100,charBeforeYear)+clock;
            break;
       case 2:
-           clock+=eString().sprintf("%c20%02d",charBeforeYear,t->tm_year % 100);
+           clock=eString().sprintf("20%02d%c",t->tm_year % 100,charBeforeYear)+clock;
            break;
    }
    return clock;
