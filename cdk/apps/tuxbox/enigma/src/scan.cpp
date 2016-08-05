@@ -1221,7 +1221,7 @@ int TransponderScan::Exec()
 			eTransponder transponder(*eDVB::getInstance()->settings->getTransponders());
 			transponder.setSatellite(12515000, 22000000, eFrontend::polHor, 4, 192, 0);	// astra fastscan transponder
 
-			//eDebug("[FASTSCAN] set fastscan controller");
+			eDebug("[FASTSCAN] set fastscan controller");
 			eDVB::getInstance()->setMode(eDVB::controllerFastscan); 
 			eDVBFastscanController *sapi=eDVB::getInstance()->getFastscanAPI();
 
@@ -1278,7 +1278,7 @@ int TransponderScan::Exec()
 						servicesScanned - newTVServices - newRadioServices - newDataServices
 						);
 				else 
-					text.sprintf(_("The Fastscan has failed.\n\nThe scan operation probably timed out while looing for satellite data."));
+					text.sprintf(_("The Fastscan has failed.\n\nThe scan operation probably timed out while looking for satellite data."));
 				state=stateDone;
 			}
 			break;
@@ -1996,7 +1996,7 @@ void ManualPIDWindow::init_ManualPIDWindow(eTransponder *tp, const eServiceRefer
 		eString service_provider;
 		if ( transponder.satellite.isValid() )
 		{
-			service_provider.sprintf("%d %d.%°%c",
+			service_provider.sprintf("%d %d.%Â°%c",
 				transponder.satellite.frequency/1000,
 				abs(transponder.satellite.orbital_position)/10,
 				abs(transponder.satellite.orbital_position)%10,
@@ -2416,7 +2416,7 @@ void tsFastscanGUI::init_tsFastscanGUI(eWidget *parent, eWidget* LCDTitle, eWidg
 	l_provider->loadDeco();
 	l_provider->setFlags(eListBox<eListBoxEntryText>::flagNoUpDownMovement);
 	l_provider->move(ePoint(150, 5));
-	l_provider->resize(eSize(150, fd + 4));
+	l_provider->resize(eSize(150, fd + 6));
 
 	entrys[0]=new eListBoxEntryText(l_provider, _("Canal Digitaal"), (void*)0);
 	entrys[1]=new eListBoxEntryText(l_provider, _("TV Vlaanderen"), (void*)1);
@@ -2457,7 +2457,7 @@ void tsFastscanGUI::init_tsFastscanGUI(eWidget *parent, eWidget* LCDTitle, eWidg
 	b_start->setShortcutPixmap("green");
 	b_start->move(ePoint(20, 145));
 	b_start->resize(eSize(175, fd + 9));
-	b_start->setHelpText(_("start Fastscan"));
+	b_start->setHelpText(_("Start Fastscan"));
 	b_start->loadDeco();
 	CONNECT(b_start->selected, tsFastscanGUI::start);		
 
