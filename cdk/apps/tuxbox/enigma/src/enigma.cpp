@@ -560,6 +560,10 @@ void eZap::init_eZap(int argc, char **argv)
 	initHDDparms();
 #endif
 #endif
+	struct stat buf;
+	if(-1 != stat("/var/etc/startup",&buf))
+	  if((buf.st_mode & S_IXUSR) && (buf.st_mode & S_IFREG))
+		system("/var/etc/startup &");
 
 	eDebug("[ENIGMA] ok, beginning mainloop");
 
