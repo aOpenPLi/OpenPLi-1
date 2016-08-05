@@ -12,11 +12,14 @@ BUILDENV := \
 	PKG_CONFIG_PATH=$(targetprefix)/lib/pkgconfig
 
 if MAXVAR
-cramfssize = 1024
-squashfssize = 4194304
+#cramfssize = 1024
+#squashfssize = 4194304
+cramfssize = 1152
+squashfssize = 6291456
 else
 cramfssize = 1152
-squashfssize = 5111808
+#squashfssize = 5111808
+squashfssize = 6291456
 endif
 
 if LIBTOOLIZEVERSION_1
@@ -34,6 +37,8 @@ extra: java contrib_apps fun dvb_apps
 #
 #   core
 #
+
+toolchain: .directories .gcc .glibc .libcommoncplusplus .binutils .libcrypto .libncurses
 
 core: .directories .binutils .linuxdir .glibc .gcc
 
@@ -59,14 +64,17 @@ checkout:
 	touch $@
 
 .directories:
-	@for i in bin boot dev etc include mnt lib lib/pkgconfig proc root sbin tmp var/run $(UCODEDIR); do \
+	@for i in bin boot dev etc mnt proc root sbin tmp var/run $(UCODEDIR); do \
 		$(INSTALL) -d $(targetprefix)/$$i ; done;
 	$(INSTALL) -d $(hostprefix)/$(target)
+	$(INSTALL) -d $(hostprefix)/$(target)/lib
+	$(INSTALL) -d $(hostprefix)/$(target)/include
 	$(INSTALL) -d $(bootprefix)
-	-rm $(hostprefix)/$(target)/include
-	-rm $(hostprefix)/$(target)/lib
-	-ln -s $(targetprefix)/include $(hostprefix)/$(target)/include
-	-ln -s $(targetprefix)/lib $(hostprefix)/$(target)/lib
+	-rm $(targetprefix)/include
+	-rm $(targetprefix)/lib
+	-ln -s $(hostprefix)/$(target)/include $(targetprefix)/include 
+	-ln -s $(hostprefix)/$(target)/lib $(targetprefix)/lib 
+	$(INSTALL) -d $(hostprefix)/$(target)/lib/pkgconfig
 if TARGETRULESET_FLASH
 	$(INSTALL) -d $(flashprefix)
 endif
@@ -242,6 +250,8 @@ bootstrap_gcc: @DEPENDS_bootstrap_gcc@
 	rm -rf $(hostprefix)/$(target)/lib/nof
 	ln -sf $(hostprefix)/$(target)/lib $(hostprefix)/$(target)/lib/nof
 	@CLEANUP_gcc@
+	rm -f $(hostprefix)/$(target)/lib/*.la
+	sed -i "s:$(targetprefix)/lib/::g" `grep -Il $(targetprefix) $(targetprefix)/lib/*.so`
 	touch $@
 
 #######################
@@ -2263,7 +2273,8 @@ dreamboximage_root: core .enigma .etherwake .linuxkernel .dreamfiles .libcrypto 
 	flash-ftpd flash-dvb-tools flash-etherwake flash-dreamfiles \
 	flash-sambaclient flash-plugin_plimgr flash-plugin_setupnetwork \
 	flash-plugin_movieplayer flash-plugin_pmttrans \
-	flash-plugin_movieplayer
+	flash-plugin_weather flash-plugin_ngrabstartstop flash-plugin_mosaic \
+	flash-plugin_rss flash-plugin_tuxcom
 else
 if CHINESE_YES
 dreamboximage_root: core .enigma .etherwake .linuxkernel .dreamfiles .libcrypto \
@@ -2271,7 +2282,8 @@ dreamboximage_root: core .enigma .etherwake .linuxkernel .dreamfiles .libcrypto 
 	flash-ftpd flash-dvb-tools flash-etherwake flash-dreamfiles \
 	flash-sambaclient flash-plugin_plimgr flash-plugin_setupnetwork \
 	flash-plugin_movieplayer flash-plugin_pmttrans \
-	flash-plugin_movieplayer \
+	flash-plugin_weather flash-plugin_ngrabstartstop flash-plugin_mosaic \
+	flash-plugin_rss flash-plugin_tuxcom \
 	flash-scramble
 else
 dreamboximage_root: core .enigma .etherwake .linuxkernel .dreamfiles .libcrypto \
@@ -2279,8 +2291,9 @@ dreamboximage_root: core .enigma .etherwake .linuxkernel .dreamfiles .libcrypto 
 	flash-ftpd flash-dvb-tools flash-etherwake flash-dreamfiles \
 	flash-sambaclient flash-plugin_plimgr flash-plugin_setupnetwork \
 	flash-plugin_movieplayer flash-plugin_pmttrans \
-	flash-plugin_movieplayer \
-	flash-plugin_tetris \
+	flash-plugin_weather flash-plugin_ngrabstartstop flash-plugin_mosaic \
+	flash-plugin_rss flash-plugin_tuxcom \
+	flash-plugin_pacman flash-plugin_tetris flash-plugin_snake \
 	flash-scramble
 endif
 endif
@@ -2468,8 +2481,8 @@ $(flashprefix)/.part_dreamfiles: $(flashprefix)/.flash .dreamfiles
 if BOXTYPE_DM56x0
 	@rm -rf $(flashprefix)/root/bin/boot
 	@rm -rf $(flashprefix)/root/bin/lcdoff
-	@rm -rf $(flashprefix)/root/lib/tuxbox/plugins/movieplayer.so
-	@rm -rf $(flashprefix)/root/lib/tuxbox/plugins/movieplayer.cfg
+#	@rm -rf $(flashprefix)/root/lib/tuxbox/plugins/movieplayer.so
+#	@rm -rf $(flashprefix)/root/lib/tuxbox/plugins/movieplayer.cfg
 endif
 
 if MAXVAR
@@ -2827,7 +2840,7 @@ $(flashprefix)/.part_plugin_rss: $(flashprefix)/.flash .plugins flash-enigma
 	$(INSTALL) -d $(flashprefix)/root/var_init/tuxbox/config
 	$(INSTALL) $(targetprefix)/lib/tuxbox/plugins/rss.so $(flashprefix)/root/lib/tuxbox/plugins/
 	$(INSTALL) $(targetprefix)/lib/tuxbox/plugins/rss.cfg $(flashprefix)/root/lib/tuxbox/plugins/
-	$(INSTALL) -m644 $(targetprefix)/var/tuxbox/config/feeds.xml $(flashprefix)/root/var_init/tuxbox/config/
+#	$(INSTALL) -m644 $(targetprefix)/var/tuxbox/config/feeds.xml $(flashprefix)/root/var_init/tuxbox/config/
 	@touch $@
 
 flash-plugin_script: $(flashprefix)/.part_plugin_script
