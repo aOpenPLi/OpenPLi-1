@@ -1,6 +1,6 @@
-diff -Naur busybox-1.01/editors/vi.c busybox-1.01-patched/editors/vi.c
---- busybox-1.01/editors/vi.c	2005-08-17 03:29:16.000000000 +0200
-+++ busybox-1.01-patched/editors/vi.c	2005-10-04 09:21:38.000000000 +0200
+diff -Naur busybox-1.01.orig/editors/vi.c busybox-1.01/editors/vi.c
+--- busybox-1.01.orig/editors/vi.c	2005-08-17 09:29:16.000000000 +0800
++++ busybox-1.01/editors/vi.c	2010-01-20 17:04:59.124740215 +0800
 @@ -19,7 +19,7 @@
   */
  
@@ -272,9 +272,76 @@ diff -Naur busybox-1.01/editors/vi.c busybox-1.01-patched/editors/vi.c
  			while (isblnk(*dot)) {	// delete leading WS
  				dot_delete();
  			}
-diff -Naur busybox-1.01/init/init.c busybox-1.01-patched/init/init.c
---- busybox-1.01/init/init.c	2004-10-08 10:21:54.000000000 +0200
-+++ busybox-1.01-patched/init/init.c	2005-02-03 21:14:50.000000000 +0100
+diff -Naur busybox-1.01.orig/include/usage.h busybox-1.01/include/usage.h
+--- busybox-1.01.orig/include/usage.h	2005-08-17 09:29:15.000000000 +0800
++++ busybox-1.01/include/usage.h	2010-01-20 17:12:40.472736768 +0800
+@@ -1787,7 +1787,9 @@
+ 	"\t-l\t\tlisten mode, for inbound connects\n" \
+ 	"\t-p PORT\t\tlocal port number\n" \
+ 	"\t-i SECS\t\tdelay interval for lines sent\n" \
+-	"\t-e PROG\t\tprogram to exec after connect (dangerous!)"
++	"\t-e PROG\t\tprogram to exec after connect (dangerous!)"\
++	"\t-w timeout\t\ttimeout,seconds\n"\
++	"\t-z\t\tzero input/output mode,no data send or receive."
+ #define nc_example_usage \
+ 	"$ nc foobar.somedomain.com 25\n" \
+ 	"220 foobar ESMTP Exim 3.12 #1 Sat, 15 Apr 2000 00:03:02 -0600\n" \
+@@ -1886,8 +1888,15 @@
+ 	"Options:\n" \
+ 	"\t-c COUNT\tSend only COUNT pings.\n" \
+ 	"\t-s SIZE\t\tSend SIZE data bytes in packets (default=56).\n" \
+-	"\t-q\t\tQuiet mode, only displays output at start\n" \
+-	"\t\t\tand when finished."
++	"\t-q\t\tQuiet mode, only displays output at start and when finished.\n"\
++	"\t-W TIMEOUT\tTime to wait for a response, in seconds. The option affects only\n"\
++    "\t          \ttimeout in absense of any responses, otherwise  ping  waits  for\n"\
++    "\t          \ttwo RTTs."\
++	"\t-w DEADLINE\tSpecify  a  timeout, in seconds, before ping exits regardless of\n"\
++    "\t           \thow many packets have been sent or received. In this  case  ping\n"\
++    "\t           \tdoes  not  stop after count packet are sent, it waits either for\n"\
++    "\t           \tdeadline expire or until count probes are answered or  for  some\n"\
++    "\t           \terror notification from network.\n"
+ #endif
+ #define ping_example_usage \
+ 	"$ ping localhost\n" \
+@@ -1978,12 +1987,13 @@
+ 	"/root\n"
+ 
+ #define rdate_trivial_usage \
+-	"[-sp] HOST"
++	"[-s] [-p] [-T <timeout>] HOST"
+ #define rdate_full_usage \
+ 	"Get and possibly set the system date and time from a remote HOST.\n\n" \
+ 	"Options:\n" \
+ 	"\t-s\tSet the system date and time (default).\n" \
+-	"\t-p\tPrint the date and time."
++	"\t-p\tPrint the date and time.\n" \
++	"\t-T TIMEOUT\tTime to wait for a response, in seconds. default is 10."
+ 
+ #define readlink_trivial_usage \
+ 	""
+@@ -2814,7 +2824,8 @@
+ 
+ #define wget_trivial_usage \
+ 	"[-c|--continue] [-q|--quiet] [-O|--output-document file]\n" \
+-	"\t\t[--header 'header: value'] [-Y|--proxy on/off] [-P DIR] url"
++	"\t\t[--header 'header: value'] [-Y|--proxy on/off] [-P DIR]\n" \
++	"\t\t[-U|--user-agent agent] [-T timeout] url"
+ #define wget_full_usage \
+ 	"wget retrieves files via HTTP or FTP\n\n" \
+ 	"Options:\n" \
+@@ -2822,6 +2833,8 @@
+ 	"\t-q\tquiet mode - do not print\n" \
+ 	"\t-P\tSet directory prefix to DIR\n" \
+ 	"\t-O\tsave to filename ('-' for stdout)\n" \
++	"\t-T\ttimeout,in seconds\n" \
++	"\t-U\tadjust 'User-Agent' field\n" \
+ 	"\t-Y\tuse proxy ('on' or 'off')"
+ 
+ #define which_trivial_usage \
+diff -Naur busybox-1.01.orig/init/init.c busybox-1.01/init/init.c
+--- busybox-1.01.orig/init/init.c	2005-08-17 09:29:16.000000000 +0800
++++ busybox-1.01/init/init.c	2010-01-20 17:04:59.188735524 +0800
 @@ -375,7 +375,7 @@
  	while ((fd = open(console, O_RDONLY | O_NONBLOCK)) < 0 && tried < 2) {
  		/* Can't open selected console -- try
@@ -304,9 +371,9 @@ diff -Naur busybox-1.01/init/init.c busybox-1.01-patched/init/init.c
  	}
  	return wpid;
  }
-diff -Naur busybox-1.01/libbb/messages.c busybox-1.01-patched/libbb/messages.c
---- busybox-1.01/libbb/messages.c	2004-03-15 09:28:42.000000000 +0100
-+++ busybox-1.01-patched/libbb/messages.c	2005-02-03 21:14:50.000000000 +0100
+diff -Naur busybox-1.01.orig/libbb/messages.c busybox-1.01/libbb/messages.c
+--- busybox-1.01.orig/libbb/messages.c	2005-08-17 09:29:14.000000000 +0800
++++ busybox-1.01/libbb/messages.c	2010-01-20 17:04:59.196735147 +0800
 @@ -59,27 +59,47 @@
  #endif
  
@@ -360,9 +427,9 @@ diff -Naur busybox-1.01/libbb/messages.c busybox-1.01-patched/libbb/messages.c
  const char * const bb_path_nologin_file = NOLOGIN_FILE;
  #endif
  
-diff -Naur busybox-1.01/libbb/procps.c busybox-1.01-patched/libbb/procps.c
---- busybox-1.01/libbb/procps.c	2004-08-27 00:18:58.000000000 +0200
-+++ busybox-1.01-patched/libbb/procps.c	2005-02-05 20:19:11.000000000 +0100
+diff -Naur busybox-1.01.orig/libbb/procps.c busybox-1.01/libbb/procps.c
+--- busybox-1.01.orig/libbb/procps.c	2005-08-17 09:29:14.000000000 +0800
++++ busybox-1.01/libbb/procps.c	2010-01-20 17:04:59.204731418 +0800
 @@ -22,7 +22,7 @@
  #endif
  	)
@@ -614,9 +681,9 @@ diff -Naur busybox-1.01/libbb/procps.c busybox-1.01-patched/libbb/procps.c
  	}
  }
  
-diff -Naur busybox-1.01/miscutils/hdparm.c busybox-1.01-patched/miscutils/hdparm.c
---- busybox-1.01/miscutils/hdparm.c	2004-07-21 00:53:59.000000000 +0200
-+++ busybox-1.01-patched/miscutils/hdparm.c	2005-02-03 21:14:50.000000000 +0100
+diff -Naur busybox-1.01.orig/miscutils/hdparm.c busybox-1.01/miscutils/hdparm.c
+--- busybox-1.01.orig/miscutils/hdparm.c	2005-08-17 09:29:15.000000000 +0800
++++ busybox-1.01/miscutils/hdparm.c	2010-01-20 17:04:59.216732109 +0800
 @@ -1254,6 +1254,7 @@
  static unsigned long set_sleepnow   = 0, get_sleepnow   = 0;
  static unsigned long get_powermode  = 0;
@@ -660,9 +727,9 @@ diff -Naur busybox-1.01/miscutils/hdparm.c busybox-1.01-patched/miscutils/hdparm
  					case 'B':
  						get_apmmode = noisy;
  						noisy = 1;
-diff -Naur busybox-1.01/modutils/lsmod.c busybox-1.01-patched/modutils/lsmod.c
---- busybox-1.01/modutils/lsmod.c	2004-03-15 09:28:47.000000000 +0100
-+++ busybox-1.01-patched/modutils/lsmod.c	2005-02-03 21:14:50.000000000 +0100
+diff -Naur busybox-1.01.orig/modutils/lsmod.c busybox-1.01/modutils/lsmod.c
+--- busybox-1.01.orig/modutils/lsmod.c	2005-08-17 09:29:11.000000000 +0800
++++ busybox-1.01/modutils/lsmod.c	2010-01-20 17:04:59.224743465 +0800
 @@ -38,6 +38,9 @@
  #include <sys/file.h>
  #include "busybox.h"
@@ -673,9 +740,275 @@ diff -Naur busybox-1.01/modutils/lsmod.c busybox-1.01-patched/modutils/lsmod.c
  
  #ifndef CONFIG_FEATURE_CHECK_TAINTED_MODULE
  static inline void check_tainted(void) { printf("\n"); }
-diff -Naur busybox-1.01/sysdeps/linux/Config.in busybox-1.01-patched/sysdeps/linux/Config.in
---- busybox-1.01/sysdeps/linux/Config.in	2004-05-25 13:30:22.000000000 +0200
-+++ busybox-1.01-patched/sysdeps/linux/Config.in	2005-02-03 21:14:50.000000000 +0100
+diff -Naur busybox-1.01.orig/networking/nc.c busybox-1.01/networking/nc.c
+--- busybox-1.01.orig/networking/nc.c	2005-08-17 09:29:10.000000000 +0800
++++ busybox-1.01/networking/nc.c	2010-01-20 17:10:31.904738166 +0800
+@@ -33,6 +33,7 @@
+ 
+ #include <sys/types.h>
+ #include <sys/socket.h>
++#include <sys/signal.h>
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
+ #include <netdb.h>
+@@ -42,9 +43,14 @@
+ 
+ #define GAPING_SECURITY_HOLE
+ 
++static void timeout(int signum)
++{
++	bb_error_msg_and_die("timed out");
++}
++
+ int nc_main(int argc, char **argv)
+ {
+-	int do_listen = 0, lport = 0, delay = 0, tmpfd, opt, sfd, x;
++	int do_listen = 0, lport = 0, delay = 0, tmpfd, opt, sfd, x, wsecs = 0, zero =0;
+ 	char buf[BUFSIZ];
+ #ifdef GAPING_SECURITY_HOLE
+ 	char * pr00gie = NULL;
+@@ -55,7 +61,7 @@
+ 
+ 	fd_set readfds, testfds;
+ 
+-	while ((opt = getopt(argc, argv, "lp:i:e:")) > 0) {
++	while ((opt = getopt(argc, argv, "zw:lp:i:e:")) > 0) {
+ 		switch (opt) {
+ 			case 'l':
+ 				do_listen++;
+@@ -71,11 +77,22 @@
+ 				pr00gie = optarg;
+ 				break;
+ #endif
++			case 'w':
++				wsecs = atoi(optarg);
++				break;
++			case 'z':
++				zero = 1;
++				break;
+ 			default:
+ 				bb_show_usage();
+ 		}
+ 	}
+ 
++	if (wsecs) {
++		signal(SIGALRM, timeout);
++		alarm(wsecs);
++	}
++
+ #ifdef GAPING_SECURITY_HOLE
+ 	if (pr00gie) {
+ 		/* won't need stdin */
+@@ -141,7 +158,7 @@
+ 	FD_SET(sfd, &readfds);
+ 	FD_SET(STDIN_FILENO, &readfds);
+ 
+-	while (1) {
++	while (!zero) {
+ 		int fd;
+ 		int ofd;
+ 		int nread;
+@@ -177,4 +194,5 @@
+ 			}
+ 		}
+ 	}
++	return 0;
+ }
+diff -Naur busybox-1.01.orig/networking/ping.c busybox-1.01/networking/ping.c
+--- busybox-1.01.orig/networking/ping.c	2005-08-17 09:29:10.000000000 +0800
++++ busybox-1.01/networking/ping.c	2010-01-20 17:04:59.240725670 +0800
+@@ -57,8 +57,8 @@
+ static const int MAXICMPLEN = 76;
+ static const int MAXPACKET = 65468;
+ #define	MAX_DUP_CHK	(8 * 128)
+-static const int MAXWAIT = 10;
+-static const int PINGINTERVAL = 1;		/* second */
++static const long MAXWAIT = 10;
++static const long PINGINTERVAL = 1;		/* 1/1000 second */
+ 
+ #define O_QUIET         (1 << 0)
+ 
+@@ -71,6 +71,7 @@
+ static void ping(const char *host);
+ 
+ /* common routines */
++
+ static int in_cksum(unsigned short *buf, int sz)
+ {
+ 	int nleft = sz;
+@@ -133,6 +134,7 @@
+ 
+ 	signal(SIGALRM, noresp);
+ 	alarm(5);					/* give the host 5000ms to respond */
++
+ 	/* listen for replies */
+ 	while (1) {
+ 		struct sockaddr_in from;
+@@ -174,6 +176,7 @@
+ static int datalen; /* intentionally uninitialized to work around gcc bug */
+ 
+ static long ntransmitted, nreceived, nrepeats, pingcount;
++static unsigned total_secs,timeout,deadline;
+ static int myid, options;
+ static unsigned long tmin = ULONG_MAX, tmax, tsum;
+ static char rcvd_tbl[MAX_DUP_CHK / 8];
+@@ -239,13 +242,29 @@
+ 		bb_error_msg_and_die("ping wrote %d chars; %d expected", i,
+ 			   (int)sizeof(packet));
+ 
+-	signal(SIGALRM, sendping);
+-	if (pingcount == 0 || ntransmitted < pingcount) {	/* schedule next in 1s */
++	if (pingcount == 0 || deadline || ntransmitted < pingcount) {	/* schedule next in 1s */
++		signal(SIGALRM, sendping);
++		if (deadline) {
++			total_secs += PINGINTERVAL;
++			if (total_secs >= deadline)
++				signal(SIGALRM, pingstats);
++		}
+ 		alarm(PINGINTERVAL);
+-	} else {					/* done, wait for the last ping to come back */
+-		/* todo, don't necessarily need to wait so long... */
++	} else {/* -c NN, and all NN are sent (and no deadline) */
++		/* Wait for the last ping to come back.
++		 * -W timeout: wait for a response in seconds.
++		 * Affects only timeout in absense of any responses,
++		 * otherwise ping waits for two RTTs. */
++		unsigned expire = timeout;
++
++		if (nreceived) {
++			/* approx. 2*tmax, in seconds (2 RTT) */
++			expire = tmax / (512*1024);
++			if (expire == 0)
++				expire = 1;
++		}
+ 		signal(SIGALRM, pingstats);
+-		alarm(MAXWAIT);
++		alarm(expire);
+ 	}
+ }
+ 
+@@ -400,6 +419,8 @@
+ 	argc--;
+ 	argv++;
+ 	options = 0;
++	timeout = MAXWAIT;
++	deadline=0;
+ 	/* Parse any options */
+ 	while (argc >= 1 && **argv == '-') {
+ 		thisarg = *argv;
+@@ -420,6 +441,18 @@
+ 			argv++;
+ 			datalen = atoi(*argv);
+ 			break;
++		case 'w':
++			if (--argc <=0)
++					bb_show_usage();
++			argv++;
++			deadline= atoi(*argv);
++			break;
++		case 'W':
++			if (--argc <=0)
++					bb_show_usage();
++			argv++;
++			timeout= atoi(*argv);
++			break;
+ 		default:
+ 			bb_show_usage();
+ 		}
+diff -Naur busybox-1.01.orig/networking/wget.c busybox-1.01/networking/wget.c
+--- busybox-1.01.orig/networking/wget.c	2005-08-17 09:29:10.000000000 +0800
++++ busybox-1.01/networking/wget.c	2010-01-20 17:04:59.248734791 +0800
+@@ -40,6 +40,7 @@
+ };
+ 
+ static void parse_url(char *url, struct host_info *h);
++static void exit_timeout(int ign);
+ static FILE *open_socket(struct sockaddr_in *s_in);
+ static char *gethdr(char *buf, size_t bufsiz, FILE *fp, int *istrunc);
+ static int ftpcmd(char *s1, char *s2, FILE *fp, char *buf);
+@@ -51,6 +52,7 @@
+ static void progressmeter(int flag);
+ static char *curfile;			/* Name of current file being transferred. */
+ static struct timeval start;	/* Time a transfer started. */
++static int timeout;
+ static volatile unsigned long statbytes = 0; /* Number of bytes transferred so far. */
+ /* For progressmeter() -- number of seconds before xfer considered "stalled" */
+ static const int STALLTIME = 5;
+@@ -149,6 +151,8 @@
+ #define WGET_OPT_HEADER	16
+ #define WGET_OPT_PREFIX	32
+ #define WGET_OPT_PROXY	64
++#define WGET_OPT_USER_AGENT    128
++#define WGET_OPT_NETWORK_READ_TIMEOUT 256
+ 
+ static const struct option wget_long_options[] = {
+ 	{ "continue",        0, NULL, 'c' },
+@@ -158,6 +162,8 @@
+ 	{ "header",	         1, NULL, 131 },
+ 	{ "directory-prefix",1, NULL, 'P' },
+ 	{ "proxy",           1, NULL, 'Y' },
++	{ "user-agent",      1, NULL, 'U' },
++	{ "timeout",		 1, NULL, 'T' },
+ 	{ 0,                 0, 0, 0 }
+ };
+ 
+@@ -187,13 +193,16 @@
+ 	int quiet_flag = FALSE;		/* Be verry, verry quiet...			*/
+ 	int use_proxy = 1;          /* Use proxies if env vars are set  */
+ 	char *proxy_flag = "on";	/* Use proxies if env vars are set  */
++	char *user_agent = "Wget"; /* Content of the "User-Agent" header field */
++	char * ctimeout=0;
++	timeout=0;
+ 
+ 	/*
+ 	 * Crack command line.
+ 	 */
+ 	bb_opt_complementaly = "\203*";
+ 	bb_applet_long_options = wget_long_options;
+-	opt = bb_getopt_ulflags(argc, argv, "cq\213O:\203:P:Y:", &fname_out, &headers_llist, &dir_prefix, &proxy_flag);
++	opt = bb_getopt_ulflags(argc, argv, "cq\213O:\203:P:Y:U:T:", &fname_out, &headers_llist, &dir_prefix, &proxy_flag, &user_agent,&ctimeout);
+ 	if (opt & WGET_OPT_CONTINUE) {
+ 		++do_continue;
+ 	}
+@@ -218,6 +227,14 @@
+ 			headers_llist = headers_llist->link;
+ 		}
+ 	}
++	if(opt & WGET_OPT_NETWORK_READ_TIMEOUT){
++		timeout=atoi(ctimeout);
++		if(timeout>0){
++			signal(SIGALRM, exit_timeout);
++			alarm(timeout);					
++
++		}
++	}
+ 	if (argc - optind != 1)
+ 			bb_show_usage();
+ 
+@@ -330,7 +347,7 @@
+ 				fprintf(sfp, "GET /%s HTTP/1.1\r\n", target.path);
+ 			}
+ 
+-			fprintf(sfp, "Host: %s\r\nUser-Agent: Wget\r\n", target.host);
++			fprintf(sfp, "Host: %s\r\nUser-Agent: %s\r\n", target.host, user_agent);
+ 
+ #ifdef CONFIG_FEATURE_WGET_AUTHENTICATION
+ 			if (target.user) {
+@@ -602,6 +619,11 @@
+ 	}
+ }
+ 
++void exit_timeout(int ign)
++{
++	printf("timeout,exit...");
++	exit(EXIT_FAILURE);
++}
+ 
+ FILE *open_socket(struct sockaddr_in *s_in)
+ {
+diff -Naur busybox-1.01.orig/sysdeps/linux/Config.in busybox-1.01/sysdeps/linux/Config.in
+--- busybox-1.01.orig/sysdeps/linux/Config.in	2005-08-17 09:29:15.000000000 +0800
++++ busybox-1.01/sysdeps/linux/Config.in	2010-01-20 17:04:59.256743074 +0800
 @@ -203,6 +203,14 @@
  	  if you want to add some simple compiler switches (like -march=i686),
  	  or check for warnings using -Werror, just those options here.
@@ -691,3 +1024,126 @@ diff -Naur busybox-1.01/sysdeps/linux/Config.in busybox-1.01-patched/sysdeps/lin
  endmenu
  
  menu 'Installation Options'
+diff -Naur busybox-1.01.orig/util-linux/mount.c busybox-1.01/util-linux/mount.c
+--- busybox-1.01.orig/util-linux/mount.c	2005-08-17 09:29:17.000000000 +0800
++++ busybox-1.01/util-linux/mount.c	2010-01-20 17:04:59.320733071 +0800
+@@ -52,6 +52,11 @@
+ #include <stdio.h>
+ #include <mntent.h>
+ #include <ctype.h>
++#include <netdb.h>
++#include <sys/socket.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++
+ #include "busybox.h"
+ 
+ #ifdef CONFIG_NFSMOUNT
+@@ -475,6 +480,30 @@
+ 				}
+ 			}
+ #endif
++			if (device[0] == '/' && device[1] == '/') {
++				/* CIFS or SMBFS mount. Do hostname resolving ourselves */
++				struct hostent *s_addr;
++				char *sl = strchr(device+2, '/');
++				char *unc = strstr(string_flags, "unc=//");
++				char *slunc;
++				char *smbdev = xmalloc(PATH_MAX);
++				char *newopts = xmalloc(PATH_MAX);
++
++				strncpy(smbdev, device+2, sl-(device+2));
++				s_addr = gethostbyname(smbdev);
++				
++				snprintf(smbdev, PATH_MAX, "//%s%s", inet_ntoa(*( struct in_addr*)( s_addr->h_addr)), sl);
++				free(device);
++				device = smbdev;
++				
++				if (unc) {
++					slunc = strchr(unc+6, '/');
++					string_flags[unc - string_flags] = '\0';
++					snprintf(newopts, PATH_MAX, "%sunc=//%s%s", string_flags, inet_ntoa(*( struct in_addr*)( s_addr->h_addr)), slunc);
++					free(string_flags);
++					string_flags = newopts;
++				}
++			}
+ 			if (!mount_one
+ 				(device, directory, filesystemType, flags, string_flags,
+ 				 useMtab, fakeIt, extra_opts, TRUE, all)) {
+diff -Naur busybox-1.01.orig/util-linux/rdate.c busybox-1.01/util-linux/rdate.c
+--- busybox-1.01.orig/util-linux/rdate.c	2005-08-17 09:29:17.000000000 +0800
++++ busybox-1.01/util-linux/rdate.c	2010-01-20 17:04:59.320733071 +0800
+@@ -38,6 +38,7 @@
+ 
+ 
+ static const int RFC_868_BIAS = 2208988800UL;
++static int timeout;
+ 
+ static void socket_timeout(int sig)
+ {
+@@ -54,7 +55,7 @@
+ 	s_in.sin_port = bb_lookup_port("time", "tcp", 37);
+ 
+ 	/* Add a timeout for dead or non accessable servers */
+-	alarm(10);
++	alarm(timeout);
+ 	signal(SIGALRM, socket_timeout);
+ 
+ 	fd = xconnect(&s_in);
+@@ -77,31 +78,50 @@
+ 
+ int rdate_main(int argc, char **argv)
+ {
++	char *thisarg;
++
++	argc--;
++	argv++;
++
+ 	time_t remote_time;
+ 	int opt;
+ 	int setdate = 1;
+ 	int printdate = 1;
+-
+-	/* Interpret command line args */
+-	while ((opt = getopt(argc, argv, "sp")) > 0) {
+-		switch (opt) {
++	timeout=10;
++	int opt_s=0;
++	int opt_p=0;
++
++	while (argc >= 1 && **argv == '-') {
++		thisarg = *argv;
++		thisarg++;
++		switch (*thisarg) {
+ 			case 's':
+ 				printdate = 0;
+ 				setdate = 1;
++				opt_s=1;
+ 				break;
+ 			case 'p':
+ 				printdate = 1;
+ 				setdate = 0;
++				opt_p=1;
++				break;
++			case 'T':
++				if (--argc <= 0)
++			        bb_show_usage();
++				argv++;
++				timeout=atoi(*argv);
+ 				break;
+ 			default:
+ 				bb_show_usage();
+ 		}
++		argc--;
++		argv++;
+ 	}
+ 
+-	if (optind == argc)
++	if ((opt_s && opt_p) || argc <1 )
+ 		bb_show_usage();
+ 
+-	remote_time = askremotedate(argv[optind]);
++	remote_time = askremotedate(*argv);
+ 
+ 	if (setdate) {
+ 		time_t current_time;
