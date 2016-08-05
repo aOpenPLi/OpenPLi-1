@@ -88,19 +88,22 @@ eString removeTrailingSpaces(const eString& in)
 			return in.mid(i);
 		}
 	}
-	
 	return "";
 }			
 
 rssMain::rssMain(): eWindow(1)
-{	cmove(ePoint(140, 120));
-	cresize(eSize(440, 336));
+{
+//	cmove(ePoint(140, 120));
+	resize(eSize(640, 390));
+	valign();
 	setText("Dreambox RSS reader");
 
+	int itemHeight=eListBoxEntryText::getEntryHeight()+10;
 	theList = new eListBox<eListBoxEntryText>(this);
+	theList->setItemHeight(itemHeight);
 	theList->move(ePoint(10, 10));
 	theList->resize(eSize(clientrect.width() - 20, clientrect.height() - 20));
-	theList->loadDeco();
+//	theList->loadDeco();
 	theList->setColumns(1);
 
 	setFocus(theList);
@@ -167,14 +170,17 @@ rssFeed::rssFeed(): eWindow(1)
 	//720x576
 	//560x376
 
-	move(ePoint(80, 100));
-	resize(eSize(560, 376));
+//	move(ePoint(80, 100));
+	resize(eSize(640, 390));
+	valign();
 	setText("Feed");
 
+	int itemHeight=eListBoxEntryText::getEntryHeight() +10;
 	theList = new eListBox<eListBoxEntryText>(this);
+	theList->setItemHeight(itemHeight);
 	theList->move(ePoint(10, 10));
 	theList->resize(eSize(clientrect.width() - 20, clientrect.height() - 20));
-	theList->loadDeco();
+//	theList->loadDeco();
 	theList->setColumns(1);
 
 	setFocus(theList);
@@ -325,6 +331,11 @@ void replace_sonderzeichen(char * pointer){
     replace(pointer, "&Ouml;", "Ö");
     replace(pointer, "&Uuml;", "Ü");
     replace(pointer, "&szlig;", "ß");
+    replace(pointer, "&hellip;","\133");      //…
+    replace(pointer, "&ldquo;", "\147");      //“
+    replace(pointer, "&rdquo;", "\148");      //”
+    replace(pointer, "&ndash;","\150");       //–
+    replace(pointer, "&mdash;","\151");       //—
     replace(pointer, "&copy;", "\169");
     replace(pointer, "&shy;", "\173");
     replace(pointer, "&Agrave;", "\192");
@@ -395,7 +406,7 @@ int ConfigParser::parse(eString file)
  		char encoding[256];
 
 		int done;
-		sprintf(encoding,"ISO-8859-1");
+		sprintf(encoding,"UTF-8");
 		unsigned int len=fread(buf, 1, sizeof(buf), in);
 		char * pointer=strstr(buf, "encoding=");
 		if (pointer!=NULL) pointer=strstr(pointer, "\"");
@@ -470,8 +481,9 @@ rssDetail::rssDetail(const char *title, const char *desc) : eWindow(0)
 {
 	setText(title);
 
-	move(ePoint(80, 123));
-	resize(eSize(560, 353));	
+//	move(ePoint(80, 123));
+	resize(eSize(640, 390));
+	valign();
 
 	scrollbar = new eProgress(this);
         scrollbar->setStart(0);
@@ -490,18 +502,18 @@ rssDetail::rssDetail(const char *title, const char *desc) : eWindow(0)
 	descrLabel->resize(eSize(10, 10));
 	descrLabel->setFlags(RS_WRAP);
 
-	float lineheight=fontRenderClass::getInstance()->getLineHeight( descrLabel->getFont() );
+	float lineheight=fontRenderClass::getInstance()->getLineHeight( descrLabel->getFont() )*3/2;
 	int lines = descrWidget->getSize().height() / (int)lineheight;
 	//pageHeight = (int)(lines * lineheight);
-	int newheight = lines * (int)lineheight + (int)(round(lineheight + 0.5) - (int)lineheight);
-	descrWidget->resize( eSize( descrWidget->getSize().width(), newheight + (int)lineheight/6 ));
+	int newheight = lines * (int)lineheight ;
+	descrWidget->resize( eSize( descrWidget->getSize().width(), newheight ));
 	descrLabel->resize( 
 		eSize(
 			descrWidget->getSize().width(), 
 			descrWidget->getSize().height() * 4
 		 )
 	);
-
+	descrLabel->setLineHeight((int)lineheight);
 	const eRect &cr = getClientRect();
 	eButton * ok = new eButton(this);
 	ok->setText("OK");
@@ -601,6 +613,7 @@ void RSSParser::save(NewsItem i)
 void RSSParser::parse(eString file)
 {	XMLTreeParser * parser;
 	FILE *in = fopen(file.c_str(), "rt");
+	FILE *out= fopen("/tmp/rss_out.xml","wt");
 	newsItems.clear();
 
         if(in) 
@@ -608,9 +621,13 @@ void RSSParser::parse(eString file)
  		char encoding[256];
 
 		int done;
+		int encode=0;
 		sprintf(encoding,"ISO-8859-1");
-		unsigned int len=fread(buf, 1, sizeof(buf), in);
-		char * pointer=strstr(buf, "encoding=");
+		unsigned int len=0;
+		int convertedLen=0;
+		char * pointer;
+		len=fread(buf,1,sizeof(buf),in);
+		pointer=strstr(buf, "encoding=");
 		if (pointer!=NULL) pointer=strstr(pointer, "\"");
 		if (pointer!=NULL){
 		    pointer++;
@@ -624,30 +641,62 @@ void RSSParser::parse(eString file)
 		if (strcmp(encoding,"windows-1254")==0){
 		    sprintf(encoding,"ISO-8859-9");
 		}
+		encode=getEncodeTableValue(encoding);
+		eDebug("RSS:encoding=%s encode=%d",encoding,encode);
+
+		eString ubuf=convertDVBUTF8((const unsigned char *)buf,len,encode,0,1,&convertedLen);	
+		eDebug("RSS:Read %d bytes,converted %d bytes",len,convertedLen);
+
+		if ((strcasecmp(encoding,"ISO-8859-1")!=0)&&(strcasecmp(encoding,"UTF-8")!=0)){
+			eString nbuf=ubuf.strReplace(encoding,"UTF-8",UTF8_ENCODING);
+			ubuf=nbuf;
+		    sprintf(encoding,"UTF-8");
+		}
+
 		for (unsigned int i=0;i<strlen(encoding);i++){
 		    encoding[i]=toupper(encoding[i]);
 		}
-		if ((strcmp(encoding,"ISO-8859-1")!=0)&&(strcmp(encoding,"UTF-8")!=0)){
-		    sprintf(encoding,"ISO-8859-1");
-		}
+
 		parser = new XMLTreeParser(encoding);
 		if (parser==NULL){
-		    parser = new XMLTreeParser("ISO-8859-1");
+		    parser = new XMLTreeParser("UTF-8");
 		}
+
+		fwrite(ubuf.c_str(),1,ubuf.length(),out);
+		fseek(in,convertedLen-len,SEEK_CUR);
+		int pareseFailed=0;
 		do 
-		{	done = ( len < sizeof(buf) );
-			if ( ! parser->Parse( buf, len, done ) ) 
-			{	eMessageBox msg(_("XML parse error (general xml)"), _("Error"), eMessageBox::iconWarning|eMessageBox::btOK);
-		                msg.show();     msg.exec();     msg.hide();
+		{
+			done = (len==0 || feof(in));
+			if (!pareseFailed && ! parser->Parse( ubuf.c_str(), ubuf.length(), done ) ) 
+			{
+				int errorcode=parser->GetErrorCode();
+				eString errmsg;
+				errmsg.sprintf("XML parse error (general xml),ErrorCode=%d",errorcode);
+				eMessageBox msg(errmsg, _("Error"), eMessageBox::iconWarning|eMessageBox::btOK);
+				msg.show(); msg.exec();  msg.hide();
 				delete parser;
 				parser = NULL;
-				return;
+				pareseFailed=1;
 			}
-			len=fread(buf, 1, sizeof(buf), in);
+
+			len=fread(buf,1,sizeof(buf),in);
+			ubuf=convertDVBUTF8((const unsigned char *)buf,len,encode,0,1,&convertedLen);
+			eDebug("RSS:Read %d bytes,converted %d bytes",len,convertedLen);
+
+			if(!convertedLen && feof(in))
+				break;
+
+			fwrite(ubuf.c_str(),1,ubuf.length(),out);
+			fseek(in,convertedLen-len,SEEK_CUR);
+
 		} 
 		while (!done);
 
                 fclose(in);
+		fclose(out);
+
+		if(pareseFailed)return ;
 
 		XMLTreeNode * root = parser->RootNode();
 		if(!root)
@@ -665,20 +714,23 @@ void RSSParser::parse(eString file)
 					{	if(!strcmp(itemNode->GetType(), "item"))
 						{	for(XMLTreeNode * i = itemNode->GetChild(); i; i = i->GetNext())
 							{	if(!strcmp(i->GetType(), "title"))
-								{	thisItem.title = i->GetData();
+								{	thisItem.title=i->GetData();
 									replace_sonderzeichen((char *)thisItem.title.c_str());
 									thisItem.title.removeChars('\n');
 									thisItem.title.removeChars('\r');
+									thisItem.title.strReplace("\t"," ");
+//									eDebug("title:%s",thisItem.title.c_str());
 								}
 								if(!strcmp(i->GetType(), "description"))
 								{	eString desc = i->GetData();
 									replace_sonderzeichen((char *)desc.c_str());
-									desc.removeChars('\n');
-									desc.removeChars('\r');
+//									desc.removeChars('\n');
+//									desc.removeChars('\r');
 									desc.strReplace("\t", " ");
 									desc = removeTags(desc);
 									desc = removeTrailingSpaces(desc);
 									thisItem.description = desc;
+//									eDebug("description:%s",desc.c_str());
 								}
 							}
 							thisItem.id = idcnt++;
@@ -696,7 +748,7 @@ void RSSParser::parse(eString file)
 			{	if(!strcmp(node->GetType(), "item"))
 				{	for(XMLTreeNode * i = node->GetChild(); i; i = i->GetNext())
 					{	if(!strcmp(i->GetType(), "title"))
-						{	thisItem.title = i->GetData();
+						{	thisItem.title=i->GetData();
 							replace_sonderzeichen((char *)thisItem.title.c_str());
 							thisItem.title.removeChars('\n');
 							thisItem.title.removeChars('\r');
@@ -729,4 +781,20 @@ void RSSParser::parse(eString file)
 	{	eMessageBox msg(_("RSS file not found"), _("Error"), eMessageBox::iconWarning|eMessageBox::btOK);
 		msg.show();     msg.exec();     msg.hide();
 	}
+}
+
+static int getEncodeTableValue(char * encoding)
+{
+	if (strcasecmp(encoding, "GB2312") == 0 || strcasecmp(encoding, "GBK") == 0)
+		return GB18030_ENCODING;
+	else if (strcasecmp(encoding, "BIG5") == 0)
+		return BIG5_ENCODING;
+	else if (strcasecmp(encoding,"UTF8") == 0 || strcasecmp(encoding,"UTF-8") == 0 )
+		return UTF8_ENCODING;
+	else if (strncasecmp(encoding, "UTF16BE",7)==0)
+		return UTF16BE_ENCODING;
+	else if (strncasecmp(encoding, "UTF16LE",7)==0)
+		return UTF16LE_ENCODING;
+
+	return 0;
 }
