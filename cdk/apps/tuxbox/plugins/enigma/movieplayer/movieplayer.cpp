@@ -512,7 +512,7 @@ void eSCGui::timerHandler()
 			}
 			if(jumpBox)
 			{
-				int msgTime=3;
+				unsigned int msgTime=3;
 				eConfig::getInstance()->getKey((pathcfg+"msgtime").c_str(), msgTime );
 				if(++skip_time >= (unsigned int)msgTime)
 				{
@@ -639,7 +639,7 @@ eString eSCGui::mrl_par(int value, int mode)
 */
 	eString tmp = "";
 	if(mode==DATA)
-		tmp += "file:///";
+		tmp += "file://";
 	tmp += url_code(playList[value].Fullname) + mrlpars;
 	tmp += ( mode==DATA ? " :file-caching=1000" : " :dvdread-caching=2000" );
 	if(sub_color)
