@@ -2190,6 +2190,11 @@ plimgr: $(appsdir)/tuxbox/plugins/Makefile $(appsdir)/tuxbox/plugins/enigma/plim
 	$(target)-strip $(targetprefix)/bin/pmthelper
 	$(target)-strip $(targetprefix)/bin/ecmhelper
 
+pmttrans: $(appsdir)/tuxbox/plugins/Makefile $(appsdir)/tuxbox/plugins/pmttrans/Makefile
+	$(MAKE) -C $(appsdir)/tuxbox/plugins/pmttrans all install
+	$(INSTALL) $(targetprefix)/bin/pmttrans $(flashprefix)/root/bin
+	$(target)-strip $(targetprefix)/bin/pmttrans
+
 #setup: $(appsdir)/tuxbox/plugins/Makefile $(appsdir)/tuxbox/plugins/enigma/setup/Makefile
 #	$(MAKE) -C $(appsdir)/tuxbox/plugins/enigma/setup all install
 #	$(INSTALL) $(targetprefix)/lib/tuxbox/plugins/setup.so $(flashprefix)/root/lib/tuxbox/plugins/
@@ -2235,7 +2240,7 @@ dreamboximage_root: core .enigma .e2fsprogs .samba .libcrypto .portmap .nfs_util
 	flash-plugin_tuxtxt flash-plugin_satfind flash-plugin_movieplayer \
 	flash-ftpd flash-dvb-tools flash-fstools \
 	flash-sambaserver flash-nfs-utils flash-etherwake flash-dreamfiles flash-cifs \
-	flash-plugin_plimgr flash-plugin_setupnetwork \
+	flash-plugin_plimgr flash-plugin_setupnetwork flash-plugin_pmttrans \
 	flash-scramble flash-lcdfun flash-nano
 #	.etherwake .utillinux .linuxkernel .dreamfiles .dvbsnoop \
 #	flash-enigma flash-plugin_tetris flash-plugin_snake \
@@ -2257,6 +2262,7 @@ dreamboximage_root: core .enigma .etherwake .linuxkernel .dreamfiles .libcrypto 
 	flash-enigma flash-plugin_tuxtxt flash-plugin_satfind flash-plugin_dbswitch \
 	flash-ftpd flash-dvb-tools flash-etherwake flash-dreamfiles \
 	flash-sambaclient flash-plugin_plimgr flash-plugin_setupnetwork \
+	flash-plugin_movieplayer flash-plugin_pmttrans \
 	flash-plugin_movieplayer
 else
 if CHINESE_YES
@@ -2264,6 +2270,7 @@ dreamboximage_root: core .enigma .etherwake .linuxkernel .dreamfiles .libcrypto 
 	flash-enigma flash-plugin_tuxtxt flash-plugin_satfind\
 	flash-ftpd flash-dvb-tools flash-etherwake flash-dreamfiles \
 	flash-sambaclient flash-plugin_plimgr flash-plugin_setupnetwork \
+	flash-plugin_movieplayer flash-plugin_pmttrans \
 	flash-plugin_movieplayer \
 	flash-scramble
 else
@@ -2271,6 +2278,7 @@ dreamboximage_root: core .enigma .etherwake .linuxkernel .dreamfiles .libcrypto 
 	flash-enigma flash-mv flash-plugin_tuxtxt flash-plugin_satfind flash-plugin_dbswitch \
 	flash-ftpd flash-dvb-tools flash-etherwake flash-dreamfiles \
 	flash-sambaclient flash-plugin_plimgr flash-plugin_setupnetwork \
+	flash-plugin_movieplayer flash-plugin_pmttrans \
 	flash-plugin_movieplayer \
 	flash-plugin_tetris \
 	flash-scramble
@@ -3112,6 +3120,11 @@ $(flashprefix)/.part_plugin_plimgr: $(flashprefix)/.flash .plugins
 flash-plugin_setupnetwork: $(flashprefix)/.part_plugin_setupnetwork
 $(flashprefix)/.part_plugin_setupnetwork: $(flashprefix)/.flash .plugins
 	$(INSTALL) $(targetprefix)/bin/setupnetwork $(flashprefix)/root/bin
+	@touch $@
+
+flash-plugin_pmttrans: $(flashprefix)/.part_plugin_pmttrans
+$(flashprefix)/.part_plugin_pmttrans: $(flashprefix)/.flash .plugins
+	$(INSTALL) $(targetprefix)/bin/pmttrans $(flashprefix)/root/bin
 	@touch $@
 
 flash-scramble: $(flashprefix)/.part_scramble
