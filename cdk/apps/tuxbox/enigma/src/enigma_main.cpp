@@ -2712,10 +2712,11 @@ void eZapMain::setSmartcardLogo(bool b)
 	}
 }
 
-void eZapMain::setNow(EITEvent *event)
+int eZapMain::setNow(EITEvent *event)
 {
 	eString start, duration, descr;
 	cur_event_text = "";
+	int ret=0;
 
 	if (event)
 	{
@@ -2734,20 +2735,35 @@ void eZapMain::setNow(EITEvent *event)
 			if (!show_current_remaining || !eDVB::getInstance()->time_difference)
 			{
 				duration.sprintf("%d min", event->duration / 60);
-				EINowDuration->setText(duration);
+			}
+			else
+			{	time_t remain=( event->duration+event->start_time-time(0)-eDVB::getInstance()->time_difference) / 60;
+				if(remain>=0)
+					duration.sprintf("%d min",remain);
+				else
+					duration.sprintf("");
 			}
 		}
+		else
+		{
+			duration.sprintf("");
+		}
 	}
-
-	fileinfos->setText(cur_event_text);
-	EINow->setText(cur_event_text ? cur_event_text : _("no EPG available"));
-	EINowTime->setText(start);
-	Description->setText(descr);
+	if (cur_event_text && cur_event_text != "" ){
+		fileinfos->setText(cur_event_text);
+		EINow->setText(cur_event_text);
+		EINowTime->setText(start);
+		Description->setText(descr);
+		EINowDuration->setText(duration);
+		ret=1;
+	}
+	return ret;
 }
 
-void eZapMain::setNext(EITEvent *event)
+int eZapMain::setNext(EITEvent *event)
 {
 	eString start, duration, endtime, text;
+	int ret=0;
 
 	if (event)
 	{
@@ -2769,21 +2785,26 @@ void eZapMain::setNext(EITEvent *event)
 			if (t) endtime = getTimeStr(t, gTS_SHORT);
 		}
 	}
-
-	EINextDuration->setText(duration);
-	EINext->setText(text);
-	EINextTime->setText(start);
-	EINextETime->setText(endtime);
+	if (text && text != ""){
+		EINextDuration->setText(duration);
+		EINext->setText(text);
+		EINextTime->setText(start);
+		EINextETime->setText(endtime);
+		ret=1;
+	}
+	return ret;
 }
 
 void eZapMain::setEIT(EIT *eit)
 {
-	if (eit)
+	int EPGNowNextSetted=setEPGNowNext();
+	int SettedNow=0,SettedNext=0;
+	time_t nowtime=time(0) + eDVB::getInstance()->time_difference;
+	if (eit && !EPGNowNextSetted)
 	{
 		int p = 0;
 		eServiceReferenceDVB &ref=(eServiceReferenceDVB&)eServiceInterface::getInstance()->service;
-
-		for (ePtrList<EITEvent>::iterator i(eit->events); i != eit->events.end(); ++i, p++)
+		for (ePtrList<EITEvent>::iterator i(eit->events); i != eit->events.end(); ++i,p++)
 		{
 			EITEvent *event=*i;
 
@@ -2791,9 +2812,15 @@ void eZapMain::setEIT(EIT *eit)
 			if ((event->running_status>=2) || ((!p) && (!event->running_status)))
 			{
 //				eDebug("set cur_event_id to %d", event->event_id);
-				cur_event_id=event->event_id;
-				cur_start=event->start_time;
-				cur_duration=event->duration;
+
+				if(event->start_time <= nowtime && event->start_time+event->duration >= nowtime){
+					cur_event_id=event->event_id;
+					cur_start=event->start_time;
+					cur_duration=event->duration;
+				}
+				else
+					p++;
+
 				clockUpdate();
 
 				int cnt=0;
@@ -2829,30 +2856,33 @@ void eZapMain::setEIT(EIT *eit)
 					subservicesel.selectCurrent();
 				}
 			}
+
 			switch (p)
 			{
 			case 0:
-				setNow(event);
+				SettedNow=setNow(event);
 				break;
 			case 1:
-				setNext(event);
+				SettedNext=setNext(event);
 				break;
 			}
 		}
 
 		/* now that we've got EIT now/next, stop refreshing now/next with EPG */
+	     if(SettedNow || SettedNext){
 		validEITReceived = true;
-		epgNowNextTimer.stop();
+//		epgNowNextTimer.stop();	//EPG can redisplay in OSD.
 
 		eDVBServiceController *sapi = eDVB::getInstance()->getServiceAPI();
 		if ( sapi )
 			audiosel.update(sapi->audioStreams);
+	     }
 	}
 	else
 	{
 		/* we have no EIT, try to use EPG instead */
-		validEITReceived = false;
-		if (setEPGNowNext() < 0)
+		validEITReceived = EPGNowNextSetted;
+		if (!EPGNowNextSetted)
 		{
 			/* no EPG either, clear 'now' info */
 			setNow(NULL);
@@ -2876,11 +2906,14 @@ void eZapMain::epgNowNextRefresh()
 
 int eZapMain::setEPGNowNext()
 {
-	int ret = -1;
+	int ret = 0;
+	int settedNow=0,settedNext=0;
 
 	eServiceReferenceDVB &ref = (eServiceReferenceDVB&)eServiceInterface::getInstance()->service;
 
 	timeMapPtr pMap = eEPGCache::getInstance()->getTimeMapPtr(ref, 0, 0, 2);
+
+	time_t nowtime=time(0) + eDVB::getInstance()->time_difference;
 
 	if (pMap)
 	{
@@ -2889,24 +2922,31 @@ int eZapMain::setEPGNowNext()
 
 		for (timeMap::const_iterator It = pMap->begin(); It != pMap->end() && p < 2; It++, p++)
 		{
-			EITEvent event(*It->second, tsidonid, It->second->type);
+			EITEvent event(*It->second, tsidonid, It->second->type,It->second->source);
 			switch (p)
 			{
 			case 0:
-				cur_event_id = event.event_id;
-				cur_start = event.start_time;
-				cur_duration = event.duration;
-				clockUpdate();
-				setNow(&event);
-				ret = 0;
+				if(event.start_time<=nowtime && event.start_time+event.duration>=nowtime){
+					cur_event_id = event.event_id;
+					cur_start = event.start_time;
+					cur_duration = event.duration;
+					settedNow=setNow(&event);
+				}
+				else {
+					settedNext=setNext(&event);
+					p++;	//skip next event
+				}
 				break;
 			case 1:
-				setNext(&event);
+				if(event.start_time <(cur_start+cur_duration+12*3600) && event.start_time>nowtime)
+					settedNext=setNext(&event);
 				break;
 			}
+			clockUpdate();
 		}
 	}
 
+	ret=settedNow || settedNext;
 	epgNowNextTimer.startLongTimer(30);
 	return ret;
 }
@@ -6652,7 +6692,7 @@ void eZapMain::showEPG()
 
 			while (It != pMap->end())
 			{
-				events.push_back( new EITEvent(*It->second, tsidonid, It->second->type) );
+				events.push_back( new EITEvent(*It->second, tsidonid, It->second->type,It->second->source) );
 				It++;
 			}
 			actual_eventDisplay=new eEventDisplay( service->service_name.c_str(), ref, &events );

@@ -28,7 +28,7 @@ public:
 		return event.start_time < ((eListBoxEntryEPG&)ref).event.start_time;
 	}
 	eListBoxEntryEPG(EITEvent& evt, eListBox<eListBoxEntryEPG> *listbox, eServiceReference &ref);
-	eListBoxEntryEPG(const eit_event_struct* evt, eListBox<eListBoxEntryEPG> *listbox, eServiceReference &ref, int type);
+	eListBoxEntryEPG(const eit_event_struct* evt, eListBox<eListBoxEntryEPG> *listbox, eServiceReference &ref, int type,int source=0);
 	~eListBoxEntryEPG();
 };
 

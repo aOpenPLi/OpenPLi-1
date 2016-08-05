@@ -163,7 +163,7 @@ static void SearchInChannel(const eServiceReference &e, eString search, int begi
 				{
 					for (timeMap::const_iterator event(ibegin); event != iend; ++event)
 					{
-						EITEvent *ev = new EITEvent(*event->second, tsidonid, event->second->type);
+						EITEvent *ev = new EITEvent(*event->second, tsidonid, event->second->type,event->second->source);
 						eString titleFound = "";
 						int intFound = 0;
 						intFound = searchforEvent( ev, search, titleFound, intExactMatch, intCaseSensitive, genre);
@@ -239,7 +239,7 @@ public:
 				{
 					for (timeMap::const_iterator event(ibegin); event != iend; ++event)
 					{
-						EITEvent *ev = new EITEvent(*event->second, tsidonid, event->second->type );
+						EITEvent *ev = new EITEvent(*event->second, tsidonid, event->second->type,event->second->source );
 						int intFound = 0;
 						eString titleFound = "";
 						intFound = searchforEvent(ev, search, titleFound, intExactMatch, intCaseSensitive, genre);

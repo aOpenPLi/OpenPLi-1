@@ -624,15 +624,9 @@ void eZapEPG::buildService(serviceentry &service)
 	{
 		return;
 	}
-
-	timeMap::const_iterator ibegin = evmap->lower_bound(start);
-	if ((ibegin != evmap->end()) && (ibegin != evmap->begin()) )
-	{
-		if ( ibegin->first != start )
-			--ibegin;
-	}
-	else
-		ibegin=evmap->begin();
+	timeMap::const_iterator ibegin = evmap->begin();
+	for(;ibegin != evmap->end();ibegin++)
+		if ( (ibegin->first + ibegin->second->getDuration()) > start )break;
 
 	timeMap::const_iterator iend = evmap->lower_bound(end);
 
@@ -641,7 +635,7 @@ void eZapEPG::buildService(serviceentry &service)
 
 	for (timeMap::const_iterator event(ibegin); event != iend; ++event)
 	{
-		EITEvent *ev = new EITEvent(*event->second,tsidonid,event->second->type);
+		EITEvent *ev = new EITEvent(*event->second,tsidonid,event->second->type,event->second->source);
 		if (((ev->start_time+ev->duration) >= start) && (ev->start_time <= end))
 		{
 			eString description;

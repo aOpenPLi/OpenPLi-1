@@ -359,7 +359,7 @@ EITEvent *eEPGMemStore::lookupEvent( const eServiceReferenceDVB &service, int ev
 		eventMap::iterator i( It->second.first.find( event_id ));
 		if ( i != It->second.first.end() )
 		{
-			return new EITEvent( *i->second, (It->first.tsid<<16)|It->first.onid, i->second->type );
+			return new EITEvent( *i->second, (It->first.tsid<<16)|It->first.onid, i->second->type,i->second->source);
 		}
 		else
 			eDebug("[EPGM] event %04x not found in epgcache", event_id);
@@ -413,7 +413,7 @@ EITEvent *eEPGMemStore::lookupEvent( const eServiceReferenceDVB &service, time_t
 	if ( evt )
 	{
 		int tsidonid = ( service.getTransportStreamID().get()<<16 ) | service.getOriginalNetworkID().get();
-		return new EITEvent( evt->get(), tsidonid, evt->type );
+		return new EITEvent( evt->get(), tsidonid, evt->type,evt->source);
 	}
 	return 0;
 }
@@ -434,7 +434,8 @@ eventDataPtr eEPGMemStore::getEventDataPtr( const eServiceReferenceDVB& service,
 	{
 		const eit_event_struct *eit_event = evt->get();
 		int dataLength = HILO( eit_event->descriptors_loop_length ) + EIT_LOOP_SIZE;
-		return eventDataPtr( new eventData( eit_event, dataLength, evt->type ) );
+		eventData *ev=new eventData( eit_event, dataLength, evt->type,evt->source );
+		return eventDataPtr(ev);
 	}
 	return eventDataPtr();
 }
@@ -1618,7 +1619,7 @@ EITEvent* eEPGSqlStore::lookupEvent( const eServiceReferenceDVB &service, int ev
 	eventData *evt = queryEvent( service, sqlCmd );
 	if ( evt )
 	{
-		EITEvent *eitevent = new EITEvent( evt->get(), ( service.getTransportStreamID().get()<<16 ) | service.getOriginalNetworkID().get(), evt->type );
+		EITEvent *eitevent = new EITEvent( evt->get(), ( service.getTransportStreamID().get()<<16 ) | service.getOriginalNetworkID().get(), evt->type,1);
 		delete evt;
 		return eitevent;
 	}
@@ -1643,7 +1644,7 @@ EITEvent* eEPGSqlStore::lookupEvent( const eServiceReferenceDVB &service, time_t
 	eventData *evt = queryEvent( service, sqlCmd );
 	if ( evt )
 	{
-		EITEvent *eitevent = new EITEvent( evt->get(), ( service.getTransportStreamID().get()<<16 ) | service.getOriginalNetworkID().get(), evt->type );
+		EITEvent *eitevent = new EITEvent( evt->get(), ( service.getTransportStreamID().get()<<16 ) | service.getOriginalNetworkID().get(), evt->type,1 );
 		delete evt;
 		return eitevent;
 	}

@@ -398,7 +398,7 @@ static eString erc_epg(eString request, eString dirpath, eString opt, eHTTPConne
 			(rref.getTransportStreamID().get()<<16)|rref.getOriginalNetworkID().get();
 		for (timeMap::const_iterator event(ibegin); event != iend; ++event)
 		{
-			EITEvent *ev = new EITEvent(*event->second, tsidonid, event->second->type );
+			EITEvent *ev = new EITEvent(*event->second, tsidonid, event->second->type, event->second->source );
 			processEvent(res, ev, search, wantext);
 			delete ev;
 		}

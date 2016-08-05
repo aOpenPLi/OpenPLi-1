@@ -220,7 +220,7 @@ void eEPGSelector::fillEPGList()
 	{
 		for (; It != evt->end(); It++)
 		{
-			EITEvent evt(*It->second,tsidonid,It->second->type);   // NVOD Service Event
+			EITEvent evt(*It->second,tsidonid,It->second->type,It->second->source);   // NVOD Service Event
 			for (ePtrList<Descriptor>::iterator d(evt.descriptor); d != evt.descriptor.end(); ++d)
 			{
 				Descriptor *descr=*d;
@@ -237,7 +237,7 @@ void eEPGSelector::fillEPGList()
 						if ( pIt != parent->end() )   // event found..
 						{
 							// build EITEvent with short and ext description )
-							EITEvent e(*pIt->second,tsidonid,pIt->second->type);
+							EITEvent e(*pIt->second,tsidonid,pIt->second->type,pIt->second->source);
 							// do not delete ePtrListEntrys..
 							e.descriptor.setAutoDelete(false);
 							e.start_time = evt.start_time;
@@ -301,7 +301,7 @@ void eEPGSelector::fillEPGList()
 	}
 #endif
 	else for (It = evt->begin(); It != evt->end(); It++)
-		new eListBoxEntryEPG(*It->second, events, current, It->second->type);
+		new eListBoxEntryEPG(*It->second, events, current, It->second->type,It->second->source);
     	events->endAtomic();
 }
 
