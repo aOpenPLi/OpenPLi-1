@@ -309,7 +309,10 @@ void eZap::init_eZap(int argc, char **argv)
 	setlocale(LC_MESSAGES, language);
 	free(language);
 
-	eString::readEncodingFile();
+	int useEncodingFile=1;
+	eConfig::getInstance()->getKey("/elitedvb/useEncodingFile",useEncodingFile);
+	if(useEncodingFile)
+		eString::readEncodingFile();
 
 	// PLi addition
 	// set the Remote Control channel
@@ -318,7 +321,8 @@ void eZap::init_eZap(int argc, char **argv)
 	char command[32];
 	sprintf(command, "echo %x >/proc/stb/ir/rc/mask", rcChannel);
 	system(command);
-	
+	eRCInput::getInstance()->lock();
+
 	// Check if Samba needs to be started
 	bool fStartSamba(false);
 
@@ -535,6 +539,7 @@ void eZap::init_eZap(int argc, char **argv)
 	serviceSelector = new eServiceSelector();
 
 	main = new eZapMain();
+	eRCInput::getInstance()->unlock();
 
 #ifndef DISABLE_LCD
 	pLCD = eZapLCD::getInstance();
