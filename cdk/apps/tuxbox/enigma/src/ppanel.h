@@ -155,6 +155,9 @@ class eListBoxEntryExecute:public ePPanelEntry
 {
    protected:
    eString target;
+   eString targetOption;
+   eString checked;
+   eString infotxt;
 
    public:
    eListBoxEntryExecute(
@@ -265,8 +268,11 @@ class PPanel:public BaseWindow
 	static eString getPPanelName(const eString &xmlFile);
 	static void runPPanel(const eString& xmlFile, eWidget* lcdTitle = 0, eWidget* lcdElement = 0);
 	static void runPPanel(XMLTreeNode *node, eWidget* lcdTitle = 0, eWidget* lcdElement = 0);
-      
+    eString checkbox;
+    std::list<eListBoxEntryExecute *> items;  //for execute items
    ~PPanel();
+
+   friend class eListBoxEntryExecuteRef;
 };
 
 #ifdef EHTTPDOWNLOAD

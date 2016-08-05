@@ -55,12 +55,14 @@
 #include <lib/system/econfig.h>
 #include <lib/gui/ExecuteOutput.h>
 #include <lib/gui/myListBoxEntryText.h>
+#include <lib/driver/rc.h>
 
 #include <parentallock.h>
 
 #define PPANELRESTARTCODE (684)
 #include "ppanel.h"
 
+using namespace std ;
 InstalledPackages installedPackages;
 
 /******************************************************************************/
@@ -75,6 +77,20 @@ int plugin_exec(PluginParam *par)
 }
 #endif
 
+
+/******************************************************************************/
+eString expandURL(eString instr,bool getBaseURLagain=false)
+{
+	static eString baseurl="";
+	static bool readed=false;
+	if(getBaseURLagain | !readed){
+		eSimpleConfigFile config("/var/etc/ppanel.conf");
+		baseurl=config.getInfo("PPANEL_BASEURL");
+	}
+
+	return instr.strReplace("#PPANEL_BASEURL#",baseurl);
+}
+
 /******************************************************************************/
 
 // Fixed version of system()
@@ -83,10 +99,10 @@ int plugin_exec(PluginParam *par)
 int systemFixed(const char *command)
 {
    int retval;
-   eString newCommand;
+   eString newCommand,tmpCommand;
    const char *ppr = "/tmp/returnvalue";
-
-   newCommand = (eString)command + (eString)" ;echo $? > " + (eString)ppr;
+   tmpCommand=expandURL((eString)command,true);
+   newCommand = tmpCommand + (eString)" ;echo $? > " + (eString)ppr;
    
    char temp[1024];
    FILE *pipe = popen(newCommand.c_str(), "r");
@@ -129,6 +145,9 @@ int runScript(
 
    if(command.length() > 0)
    {
+      eString ncommand=expandURL(command,true);
+      command=ncommand;
+
       // Script available
       if(output)
       {
@@ -200,9 +219,9 @@ int downloadFile(
 	bool dontCheckDownload = false)
 {
    int rc = 0;
-   
 	url.strReplace("#RELEASE#", RELEASENAME);
-
+   eString turl=expandURL(url,true);
+   url=turl;
    if(url.left(6) == "ftp://")
    {
       // FTP download (without download progressbar)
@@ -366,7 +385,7 @@ ePPanelEntry::ePPanelEntry(
    : eListBoxEntryCheck(listbox, name, helptext), 
    parentdlg(parentdlg), node(node), name(name)
 {
-	setChecked(checked);
+   setChecked(checked);
    confirmation=node->GetAttributeValue("confirmation");
    quit=node->GetAttributeValue("quit");
    runBefore = node->GetAttributeValue("runBefore");
@@ -412,7 +431,8 @@ int ePPanelEntry::postActions(void)
 
    return rc;
 }
-	
+
+
 /******************************************************************************/
 
 MiniPressOKWindow::MiniPressOKWindow()
@@ -451,6 +471,8 @@ void eListBoxEntryPPanel::LBSelected(eListBoxEntry* t)
    int rc = 0;
    eString downloadFilename;
    bool removeAfterwards = false;
+
+   target=expandURL(target,false);
 
    if(confirmUser(confirmation, 
 		eString().sprintf(_("Are you sure to open\n%s?"), name.c_str())))
@@ -532,6 +554,7 @@ void eListBoxEntryFile::LBSelected(eListBoxEntry* t)
       // Execute script before
       rc = preActions();
 
+      target=expandURL(target,false);
       if(rc == 0)
       {
 			if(dontCheck == "true")
@@ -640,28 +663,68 @@ eListBoxEntryExecute::eListBoxEntryExecute(
    : ePPanelEntry(parentdlg, listbox, name, helptext, node)
 {
    target=node->GetAttributeValue("target");
+   targetOption=node->GetAttributeValue("option");
+   checked=node->GetAttributeValue("checked");
+   infotxt=node->GetAttributeValue("infotext");
+   if (parentdlg.checkbox=="radio" || parentdlg.checkbox=="check")
+		parentdlg.items.push_back(this);
+      //set checkedbox
+   bool chked=false;
+   if(checked && checked != "")
+	chked=(0==systemFixed(checked.c_str()));
+   setChecked(chked);
+//   eDebug("PPanel:checked=%s chked=%d",checked.c_str(),chked);
 }
 
 void eListBoxEntryExecute::LBSelected(eListBoxEntry* t)
 {
-	if (t != this) return;
+   if (t != this) return;
    int rc = 0;
 
    if(confirmUser(confirmation, 
       eString().sprintf(_("Are you sure to execute\n%s?"), target.c_str())))
    {
       // Execute script before
-      rc = preActions();
+	rc = preActions();
+	if(target.length()){
+//            eDebug("PPanel:targetOption=%s",targetOption.c_str());
+		if(targetOption=="showNone")
+			rc=runScript(target,false,parentdlg);
+		else if(targetOption=="showInfo"){
+			if(infotxt=="")
+				infotxt=getText();
+			eMessageBox mb(infotxt, _("Please wait"), eMessageBox::iconInfo);
+			mb.show();
+			rc=runScript(target,false,parentdlg);
+		}
+		else{
+			ExecuteOutput dlg(getText(), expandURL(target,true));
+			parentdlg.hide();
+			dlg.show();
+			dlg.exec();
+			dlg.hide();
+			parentdlg.show();
+		}
+	}
+	//  eDebug("PPanel:checked=%s chked=%d parentdlg.checkbox=%s",checked.c_str(),chked,parentdlg.checkbox.c_str());
+	// Execute script after
+	if(rc == 0) rc = postActions();
 
-      ExecuteOutput dlg(getText(), target);
-      parentdlg.hide();
-      dlg.show();
-      dlg.exec();
-      dlg.hide();
-      parentdlg.show();
+	//set checkedbox
+	if(checked != ""){
+		int chked=(0==systemFixed(checked.c_str()));
+		if(parentdlg.checkbox == "radio" && chked){
+			for(std::list<eListBoxEntryExecute*>::iterator i(parentdlg.items.begin());i!=parentdlg.items.end();i++)
+				if((*i)->getChecked())
+					(*i)->setChecked(false);
+			setChecked(true);
+		}
+		else if(parentdlg.checkbox == "check"){
+			setChecked(chked);
 
-      // Execute script after
-      if(rc == 0) rc = postActions();
+		}
+	}
+
    }
 }
 
@@ -717,7 +780,7 @@ void eListBoxEntryTarball::LBSelected(eListBoxEntry* t)
    bool showAsInstalled = true;
    bool alreadyInstalled = false;
    int rc = 0;
-
+   url=expandURL(url,true);
    if(confirmUser(confirmation, 
       eString().sprintf(_("Are you sure to install\n%s?"), getText().c_str())))
    {
@@ -986,6 +1049,8 @@ void eListBoxEntryMedia::LBSelected(eListBoxEntry* t)
    eString downloadFilename;
    bool removeAfterwards = false;
 
+   target=expandURL(target,false);
+
    if(confirmUser(confirmation, 
       eString().sprintf(_("Are you sure to play\n%s?"), target.c_str())))
    {
@@ -1176,7 +1241,7 @@ void BaseWindow::setError(const eString& errmsg)
 
 PPanel::PPanel(const eString &xmlFile) 
 	: BaseWindow("PPanel"),
-	directory(0)
+	directory(0),checkbox("null")
 {
 	FILE* fh;
 	XMLTreeNode *node = 0;
@@ -1224,7 +1289,7 @@ PPanel::PPanel(const eString &xmlFile)
 
 PPanel::PPanel(XMLTreeNode *node)
 	: BaseWindow("PPanel"),
-	directory(0)
+	directory(0),checkbox("null")
 {
 	loadItems(node);
 	CONNECT(list.selected, PPanel::itemSelected);
@@ -1276,6 +1341,7 @@ eString PPanel::getPPanelName(const eString &xmlFile)
 	int len;                                                            
 	bool error = false;                                                 
 
+//	XMLTreeParser* dir = new XMLTreeParser("UTF-8");
 	XMLTreeParser* dir = new XMLTreeParser("ISO-8859-1");
 	FILE* fh = fopen(xmlFile.c_str(), "r");                
 
@@ -1362,12 +1428,13 @@ XMLTreeNode* PPanel::loadFile(FILE *fh)
 
 	   errorstring.sprintf("XML parse error: %s at line %d",            
 	   directory->ErrorString(directory->GetErrorCode()),               
-	   directory->GetCurrentLineNumber());                              
-	   setError(errorstring.c_str());                                   
+	   directory->GetCurrentLineNumber());
+	   setError(errorstring.c_str());
 	}                                                                   
 	else                                                                
 	{                                                                   
-	   node = directory->RootNode();                                 
+	   node = directory->RootNode();
+	   checkbox=node->GetAttributeValue("checkbox");
 	}                                                                   
 
    return node;
@@ -1375,6 +1442,7 @@ XMLTreeNode* PPanel::loadFile(FILE *fh)
 
 void PPanel::loadItems(XMLTreeNode *category)
 {
+
    if (category)
    {
       eString title = category->GetAttributeValue("name");
@@ -1392,9 +1460,14 @@ void PPanel::loadItems(XMLTreeNode *category)
 				return;
 			}
 		}
+
+		checkbox = category->GetAttributeValue("checkbox");
 		
       list.beginAtomic();
       list.clearList();
+      items.clear();
+
+      eRCInput::getInstance()->lock();
 
       for (XMLTreeNode *r=category->GetChild(); r; r=r->GetNext())
       {
@@ -1424,10 +1497,10 @@ void PPanel::loadItems(XMLTreeNode *category)
          const char *name = r->GetAttributeValue("name");
          if (!name)
             continue;
-         
+
          eString helptext;   
          const char *helptmp = r->GetAttributeValue("helptext");
-         helptext = helptmp ? helptmp : _("Please select an item");
+         helptext = helptmp ? helptmp : name;
 
          if(!strcmp(r->GetType(), "category") ||
 				!strcmp(r->GetType(), "ppanel"))
@@ -1485,6 +1558,7 @@ void PPanel::loadItems(XMLTreeNode *category)
 				new eListBoxEntryEnigmaMenu(*this, &list, name, helptext, r);
       }
 
+      eRCInput::getInstance()->unlock();
       setFocus(&list);
       list.endAtomic();
    }
