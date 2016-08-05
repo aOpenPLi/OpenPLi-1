@@ -145,7 +145,7 @@ void eMoviePlayer::init_eMoviePlayer()
 		instance = this;
 	supportPlugin();
 	CONNECT(messages.recv_msg, eMoviePlayer::gotMessage);
-	eDebug("[MOVIEPLAYER] Version 2.69 starting...");
+	eDebug("[MOVIEPLAYER] Version 2.72 starting...");
 	status.ACTIVE = false;
 	run();
 }
@@ -223,7 +223,9 @@ void eMoviePlayer::control(const char *command, const char *filename)
 		messages.send(Message(Message::start, filename ? strdup(filename) : 0));
 	else
 	if (cmd == "start2")
+	{
 		messages.send(Message(Message::start2, filename ? strdup(filename) : 0));
+	}
 	else
 	if (cmd == "stop" || cmd == "terminate")
 	{
@@ -520,19 +522,45 @@ void eMoviePlayer::gotMessage(const Message &msg )
 						setErrorStatus();
 						break;
 					}
-					usleep(200000);
-					// vlc: set sout...
-					if (sendRequest2VLC("?sout=" + httpEscape(sout(mrl))) < 0) 
+					int vlc10 = 0;
+					eConfig::getInstance()->getKey(((eString)MPPATH+"vlc10").c_str(), vlc10);
+					if (vlc10)
 					{
-						setErrorStatus();
-						break;
+						usleep(200000);
+						// vlc: set sout...
+						if (sendRequest2VLC("?sout=" + httpEscape(sout(mrl))) < 0) 
+						{
+							setErrorStatus();
+							break;
+						}
+						usleep(200000);
+						// vlc: add mrl to playlist	and play
+						if (sendRequest2VLC(command + "in_play&input=" + httpEscape(mrl).strReplace("%5c","%5c%5c")) < 0)
+						{
+							setErrorStatus();
+							break;
+						}
 					}
-					usleep(200000);
-					// vlc: add mrl to playlist	and play
-					if (sendRequest2VLC(command + "in_play&input=" + httpEscape(mrl).strReplace("%5c","%5c%5c")) < 0)
+					else
 					{
-						setErrorStatus();
-						break;
+						eString params = "";
+						unsigned int pos = mrl.find_first_of('&');
+						if (pos != -1)
+						{
+							params = mrl.right(mrl.length() - pos);
+							mrl = mrl.left(pos);
+						}
+						eString sout_string = sout(mrl);
+						if (sout_string.find("soverlay") != -1)
+							params += "&option=sout-spu"; //enable stream subs for 2.0
+												
+						eString cmd = command + "in_play&input=" + httpEscape(mrl) + "&option=" + httpEscape("sout=" + sout_string) + params;
+						//eDebug("%s", cmd.c_str());
+						if (sendRequest2VLC(cmd) < 0)
+						{
+							setErrorStatus();
+							break;
+						}
 					}
 				}
 				usleep(200000);
@@ -595,35 +623,35 @@ void eMoviePlayer::gotMessage(const Message &msg )
 
 int eMoviePlayer::sendRequest2VLC(eString command)  // sending tcp commands 	 
 {  	 	 
-    char ioBuffer[512];  	 	 
+	char ioBuffer[1024];  	 	 
 	int rc = -1;  	 	 
 	int fd = tcpOpen(server.serverIP, atoi(server.webifPort.c_str()), 1);  	 	 
 	if (fd > 0)  	 	 
 	{  	 	 
-	    eString url = "GET /" + command + " HTTP/1.1\r\n\r\n";  	 	 
-	    strcpy(ioBuffer, url.c_str());  	 	 
-    	//eDebug("[MOVIEPLAYER] sendRequest2VLC : %d, %s", fd, ioBuffer);  	 	 
-	    rc = tcpRequest(fd, ioBuffer, sizeof(ioBuffer) - 1);	 	 
-	    if (rc == 0)  	 	 
-	    {  	 	 
-	        if (strstr(ioBuffer, "HTTP/1.1 200 OK") == 0)  	 	 
-	        {  	
-//    			eDebug("[MOVIEPLAYER] sendRequest2VLC return: %s", ioBuffer);
-				eDebug("[MOVIEPLAYER] 200 OK NOT received...");  
+		eString url = "GET /" + command + " HTTP/1.1\r\n\r\n"; 
+		strcpy(ioBuffer, url.c_str());
+	    	//eDebug("[MOVIEPLAYER] sendRequest2VLC : %d, %s", fd, ioBuffer);	 
+		rc = tcpRequest(fd, ioBuffer, sizeof(ioBuffer) - 1);
+		if (rc == 0)
+		{	 
+			if (strstr(ioBuffer, "HTTP/1.1 200 OK") == 0)
+			{
+//    				eDebug("[MOVIEPLAYER] sendRequest2VLC return: %s", ioBuffer);
+				eDebug("[MOVIEPLAYER] 200 OK NOT received...");
 				if (strstr(ioBuffer, "403 Forbidden") != 0)
- 					eDebug("[MOVIEPLAYER] is not enabled IP in .host file !");  	 
-	            rc = -2;  	 	 
-	        }  	 	 
-	        else   	 	 
-	        {  	 	 
-	            eDebug("[MOVIEPLAYER] 200 OK...");  	 	 
-	        }  	 	 
-	    }  	 	 
-	    else   	 	 
-	        rc = -3;  	 	 
-	    close(fd);  	 	 
-	}  	 	 
-	return rc;  	 	 
+ 					eDebug("[MOVIEPLAYER] is not enabled IP in .host file !");
+				rc = -2;
+			}
+			else
+			{
+				eDebug("[MOVIEPLAYER] 200 OK...");
+			}
+		}
+		else
+			rc = -3;
+		close(fd);
+	}
+	return rc;
 }
 
 
@@ -632,6 +660,9 @@ eString eMoviePlayer::sout(eString mrl)
 	eString soutURL = "#";
 	unsigned int pos = mrl.find_last_of('.');
 	eString extension = mrl.right(mrl.length() - pos - 1);
+
+	int vlc10 = 0;
+	eConfig::getInstance()->getKey(((eString)MPPATH+"vlc10").c_str(), vlc10);
 
 	eString name = "File";
 	if (mrl.find("dvdsimple:") != eString::npos)
@@ -647,7 +678,10 @@ eString eMoviePlayer::sout(eString mrl)
 	}
 	else
 	{
-		pos = extension.find(" :");
+		if(vlc10)
+			pos = extension.find(" :");
+		else
+			pos = extension.find("&");
 		extension = extension.left(pos);
 	}
 	
@@ -678,27 +712,27 @@ eString eMoviePlayer::sout(eString mrl)
 			
 			if(status.PLG && status.RES)
 			{
-			    int w = 0; 
-			    eConfig::getInstance()->getKey(((eString)MPPATH+"w").c_str(), w);
-			    int h = 0;
-			    eConfig::getInstance()->getKey(((eString)MPPATH+"h").c_str(), h);
+				int w = 0; 
+				eConfig::getInstance()->getKey(((eString)MPPATH+"w").c_str(), w);
+				int h = 0;
+				eConfig::getInstance()->getKey(((eString)MPPATH+"h").c_str(), h);
 	            
-	            if(w)
-	                soutURL += ",width=" + eString().sprintf("%d",w);
-	            else
-			        soutURL += ",width=";
+				if(w)
+	                		soutURL += ",width=" + eString().sprintf("%d",w);
+	            		else
+			        	soutURL += ",width=";
 			    
-			    if(h)
-			        soutURL += ",height=" + eString().sprintf("%d",h); 
-			    else
-			        soutURL += ",height="; 
+			    	if(h)
+			        	soutURL += ",height=" + eString().sprintf("%d",h); 
+			    	else
+			        	soutURL += ",height="; 
 
-			    eDebug("used original resolution w:%d x h:%d",w,h);
+			    	eDebug("used original resolution w:%d x h:%d",w,h);
 			}
 			else
 			{    
-			    soutURL += ",width=" + res_horiz;
-			    soutURL += ",height=" + res_vert;
+				soutURL += ",width=" + res_horiz;
+				soutURL += ",height=" + res_vert;
 			}
 			
 			if(status.PLG)
@@ -743,7 +777,7 @@ eString eMoviePlayer::sout(eString mrl)
 	}
 	
 	//soutURL += "duplicate{dst=std{access=http,mux=ts,dst=:" + server.streamingPort + "/dboxstream}}";
-	soutURL += "standard{access=http,mux=ts,dst=:" + server.streamingPort + "/dboxstream}";
+	soutURL += "std{access=http,mux=ts,dst=:" + server.streamingPort + "/dboxstream}";
 	//soutURL += "http{mux=ts,dst=:" + server.streamingPort + "/dboxstream}";
 
 	status.A_SYNC=true;
@@ -919,3 +953,4 @@ void *receiverThread(void *fd)
 	free(tempBuffer);
 }
 #endif
+
