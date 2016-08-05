@@ -282,6 +282,8 @@ struct eListBoxEntryService_countServices
 const eString &eListBoxEntryService::redraw(gPainter *rc, const eRect &rect, gColor coActiveB, gColor coActiveF, gColor coNormalB, gColor coNormalF, int hilited)
 {
 	bool b;
+	int percentprogress=0;
+	eConfig::getInstance()->getKey("/ezap/osd/PercentProgress", percentprogress);
 
 	if ( (b = (hilited == 2)) )
 		hilited = 0;
@@ -398,9 +400,9 @@ const eString &eListBoxEntryService::redraw(gPainter *rc, const eRect &rect, gCo
 	{
 		int perc = -1;
 		if (//  !descrPara &&  
-					service.type == eServiceReference::idDVB &&
-					(!(service.flags & eServiceReference::isDirectory)) &&
-					(!service.path.size()) )  // recorded dvb streams
+			service.type == eServiceReference::idDVB &&
+			(!(service.flags & eServiceReference::isDirectory)) &&
+			(!service.path.size()) )  // recorded dvb streams
 		{
 			if (pservice && service.type == eServiceReference::idDVB && !(service.flags & eServiceReference::isDirectory) )
 			{
@@ -428,37 +430,47 @@ const eString &eListBoxEntryService::redraw(gPainter *rc, const eRect &rect, gCo
 								sdescr='('+nexttime+' '+sdescr+')';
 							}
 							else
-								if (e->start_time != -1)
+							if (e->start_time != -1)
+							{
+								time_t endtime = e->start_time + e->duration;
+								time_t now = time(0) + eDVB::getInstance()->time_difference;
+#if no
+								tm *begin = localtime(&e->start_time);
+								sdescr += " - " + getTimeStr(begin, 0) +
+									eString().sprintf(" - %d min", e->duration/60);
+#endif
+								if ((e->start_time <= now) && (now < endtime))
 								{
-									time_t endtime = e->start_time + e->duration;
-									time_t now = time(0) + eDVB::getInstance()->time_difference;
+									time_t left = endtime - now;
+									perc = left * 100 / e->duration;
 #if no
-									tm *begin = localtime(&e->start_time);
-									sdescr += " - " + getTimeStr(begin, 0) +
-										eString().sprintf(" - %d min", e->duration/60);
+									sdescr += eString().sprintf(" - +%d min (%d%%)", left/60, perc);
 #endif
-									if ((e->start_time <= now) && (now < endtime))
-									{
-										time_t left = endtime - now;
-										perc = left * 100 / e->duration;
-#if no
-										sdescr += eString().sprintf(" - +%d min (%d%%)", left/60, perc);
-#endif
-									}
 								}
-								curEventId = e->event_id;
+							}
+							curEventId = e->event_id;
 
-								descrXOffs = newNameXOffs+namePara->getBoundBox().width();
-								if ( service.isLocked() && locked && pinCheck::getInstance()->getParentalEnabled() )
-									descrXOffs += locked->x;
-								if (numPara)
-									descrXOffs += numPara->getBoundBox().height();
-								if (descrPara)
-									descrPara->destroy();
-								descrPara = new eTextPara( eRect( 0, 0, rect.width()-52-descrXOffs, rect.height() ) );
+							descrXOffs = newNameXOffs+namePara->getBoundBox().width();
+							if ( service.isLocked() && locked && pinCheck::getInstance()->getParentalEnabled() )
+								descrXOffs += locked->x;
+							if (numPara)
+								descrXOffs += numPara->getBoundBox().height();
+							if (descrPara)
+								descrPara->destroy();
+							if(percentprogress){
+								descrPara = new eTextPara( eRect( 0, 0, rect.width()-descrXOffs, rect.height()));
+								descrPara->setFont( descrFont );
+								eString nsdesc="(";
+								if(perc>=0)nsdesc+=eString().sprintf("%d%%",100-perc);
+								nsdesc+=" "+sdescr+")";
+								descrPara->renderString(nsdesc);
+							}else{
+								descrPara = new eTextPara( eRect( 0, 0, rect.width()-52-descrXOffs,rect.height()));
 								descrPara->setFont( descrFont );
 								descrPara->renderString( sdescr);
-								descrYOffs = ((rect.height() - descrPara->getBoundBox().height()) / 2 ) - descrPara->getBoundBox().top();
+							}
+//							descrYOffs = ((rect.height() - descrPara->getBoundBox().height()) / 2 ) - descrPara->getBoundBox().top();
+							descrYOffs = (rect.height() - descrFont.pointSize + 4) / 2 ;
 						}
 						delete e;
 					}
@@ -467,26 +479,27 @@ const eString &eListBoxEntryService::redraw(gPainter *rc, const eRect &rect, gCo
 		}
 		if (descrPara)  // only render descr Para, when avail...
 		{
-			if (perc >=0)  // displaying borders in same color as channelnumber and name
+			if (perc >=0 && (!percentprogress))  // displaying borders in same color as channelnumber and name 
 			{
 #define PB_BorderWidth 2
 #define PB_Width 50
 #define PB_Height 6
-				rc->line(ePoint(rect.right() - 52, rect.top() + 3), ePoint(rect.right() + 2, rect.top() + 3));
-				rc->line(ePoint(rect.right() - 52, rect.top() + 4), ePoint(rect.right() + 2, rect.top() + 4));
-				rc->line(ePoint(rect.right() - 52, rect.top() + rect.height() - 4), ePoint(rect.right() + 2, rect.top() + rect.height() - 4));
-				rc->line(ePoint(rect.right() - 52, rect.top() + rect.height() - 3), ePoint(rect.right() + 2, rect.top() + rect.height() - 3));
-				rc->line(ePoint(rect.right() - 52, rect.top() + 5), ePoint(rect.right() - 52, rect.top() + rect.height() - 5));
-				rc->line(ePoint(rect.right() - 51, rect.top() + 5), ePoint(rect.right() - 51, rect.top() + rect.height() - 5));
-				rc->line(ePoint(rect.right() +  1, rect.top() + 5), ePoint(rect.right() +  1, rect.top() + rect.height() - 5));
-				rc->line(ePoint(rect.right() +  2, rect.top() + 5), ePoint(rect.right() +  2, rect.top() + rect.height() - 5));
+				rc->line(ePoint(rect.right() - 52, rect.top() + 3), ePoint(rect.right() + 2, rect.top() + 3)); 
+			        rc->line(ePoint(rect.right() - 52, rect.top() + 4), ePoint(rect.right() + 2, rect.top() + 4)); 
+			        rc->line(ePoint(rect.right() - 52, rect.top() + rect.height() - 4), ePoint(rect.right() + 2, rect.top() + rect.height() - 4)); 
+			        rc->line(ePoint(rect.right() - 52, rect.top() + rect.height() - 3), ePoint(rect.right() + 2, rect.top() + rect.height() - 3)); 
+			        rc->line(ePoint(rect.right() - 52, rect.top() + 5), ePoint(rect.right() - 52, rect.top() + rect.height() - 5)); 
+			        rc->line(ePoint(rect.right() - 51, rect.top() + 5), ePoint(rect.right() - 51, rect.top() + rect.height() - 5)); 
+			        rc->line(ePoint(rect.right() +  1, rect.top() + 5), ePoint(rect.right() +  1, rect.top() + rect.height() - 5)); 
+			        rc->line(ePoint(rect.right() +  2, rect.top() + 5), ePoint(rect.right() +  2, rect.top() + rect.height() - 5)); 
 			}
+
 			if ( hilited )
 				rc->setForegroundColor( eSkin::getActive()->queryColor("eServiceSelector.highlight.epg.foreground") ); // selected  
 			else
 				rc->setForegroundColor( eSkin::getActive()->queryColor("epg.time.background") ); // not selected
 			rc->renderPara(*descrPara, ePoint( rect.left()+descrXOffs, rect.top() + descrYOffs ) ); // service EPG in serviceselector
-			if (perc >=0)  // displaying bars in select service
+			if (perc >=0 && (!percentprogress))  // displaying bars in select service
 			{
 				for (int i = 5; i < rect.height() - 5; i++)
 					rc->line(ePoint(rect.right() - 50, rect.top() + i),
@@ -718,7 +731,7 @@ void eServiceSelector::fillServiceList(const eServiceReference &_ref)
 		tmp->destroy();
 	}
 	else */
-		eListBoxEntryService::maxNumSize=45;
+		eListBoxEntryService::maxNumSize=35;
 
 	services->endAtomic();
 }
@@ -942,6 +955,7 @@ struct updateEPGChangedService
 				{
 					if ( e->getEventID() != l.curEventId )
 					{
+						cnt=l.listbox->getPos((const eListBoxEntry *)(&l));
 						if ( redrawOnly )
 							((eListBox<eListBoxEntryService>*) l.listbox)->invalidateEntry(cnt);
 						else
@@ -1935,6 +1949,11 @@ void eServiceSelector::setStyle(int newStyle, bool force)
 			setFocus(services);
 		setKeyDescriptions();
 	}
+
+	int percentprogress=0;
+	eConfig::getInstance()->getKey("/ezap/osd/PercentProgress", percentprogress);
+	ci->setDisplayMode(percentprogress);
+
 	ci->show();
 }
 
