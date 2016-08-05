@@ -30,6 +30,7 @@
 
 #include <sselect.h>
 #include <enigma.h>
+#include <enigma_main.h>
 #include <lib/base/i18n.h>
 #include <lib/system/econfig.h>
 #include <lib/system/info.h>
@@ -71,6 +72,8 @@ ExtraOSDSetup::ExtraOSDSetup()
 	new eListBoxEntryCheck(&list, _("Expert OSD"), "/ezap/osd/OSDVerboseInfo", _("Show other extra info in OSD on OK"));
 	new eListBoxEntryCheck(&list, _("Expert OSD on zap"), "/ezap/osd/OSDVerboseInfoOnZap", _("Show other extra info in OSD when zapping"));
 	new eListBoxEntryCheck(&list, _("Seconds in OSD clock"), "/ezap/osd/clockSeconds", _("Seconds in OSD clock"));
+	new eListBoxEntryCheck(&list, _("Progress in %"), "/ezap/osd/PercentProgress", _("Display Progress in %"));
+	CONNECT((new eListBoxEntryCheck(&list, _("Filt Userbouquet"), "/ezap/osd/filtuserbouquet", _("Filt Userbouquet's Services where not my satellites")))->selected,ExtraOSDSetup::filtUserbouquetChanged);;
 	new eListBoxEntryCheck(&list, _("No picture in radio/mp3"), "/ezap/osd/hidebginradiomode", _("No background picture in radio/mp3 mode"));
 	new eListBoxEntryCheck(&list, _("Listbox OSD main menu"), "/ezap/osd/simpleMainMenu", _("Show the Main menu in normal listbox style"));
 	CONNECT((new eListBoxEntryCheck(&list,_("Serviceselector help buttons"),"/ezap/serviceselector/showButtons",_("Show coloured help buttons in service selector")))->selected, ExtraOSDSetup::colorbuttonsChanged );
@@ -89,7 +92,6 @@ ExtraOSDSetup::ExtraOSDSetup()
 	}
 	new eListBoxEntryCheck(&list, _("Enable Zapping History"), "/elitedvb/extra/extzapping", _("Don't care about actual mode when zapping in history list"));
 	new eListBoxEntryCheck(&list, _("Auto bouquet change"), "/elitedvb/extra/autobouquetchange", _("Change into next bouquet when end of current bouquet is reached"));
-
 	timeout_infobar = new eListBoxEntryMulti(&list, _("infobar timeout (left, right)"));
 	timeout_infobar->add((eString)"  " + eString().sprintf(_("Infobar timeout %d sec"), 2) + (eString)" >", 2);
 	timeout_infobar->add((eString)"< " + eString().sprintf(_("Infobar timeout %d sec"), 3) + (eString)" >", 3);
@@ -111,6 +113,11 @@ ExtraOSDSetup::ExtraOSDSetup()
 void ExtraOSDSetup::improvedBERChanged(bool b)
 {
 	eFrontend::getInstance()->setBERMode((int)b);
+}
+void ExtraOSDSetup::filtUserbouquetChanged(bool b)
+{
+	if(b)
+		eZapMain::getInstance()->loadUserBouquets();
 }
 
 void ExtraOSDSetup::colorbuttonsChanged(bool b)
